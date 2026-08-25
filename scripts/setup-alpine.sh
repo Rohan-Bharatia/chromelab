@@ -25,6 +25,7 @@ cd oxwm
 zig build
 doas cp zig-out/bin/oxwm /usr/bin/oxwm
 cd
+rm -rf oxwm
 sh -c 'printf "%s\n" "xset r rate 200 35 &" "exec oxwm;" > "$HOME/.xinitrc"'
 
 doas apk add xf86-video-intel # Install xf86-video-amdgpu if on an AMD system
