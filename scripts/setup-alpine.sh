@@ -19,7 +19,8 @@ adduser lab wheel
 exit
 
 # Install OXWM (DWM but better)
-doas apk add zig libx11-dev libxft-dev libxinerama-dev freetype fontconfig git
+doas apk add zig libx11-dev libxft-dev libxinerama-dev freetype fontconfig git \
+    vim dmenu st dillo qutebrowser xwallpaper
 git clone https://github.com/tonybanters/oxwm
 cd oxwm
 zig build
