@@ -19,8 +19,7 @@ adduser lab wheel
 exit
 
 # Install OXWM (DWM but better)
-doas apk add zig libx11-dev libxft-dev libxinerama-dev freetype fontconfig git \
-    vim dmenu st dillo qutebrowser xwallpaper
+doas apk add zig libx11-dev libxft-dev libxinerama-dev freetype fontconfig git
 git clone https://github.com/tonybanters/oxwm
 cd oxwm
 zig build
@@ -29,4 +28,7 @@ cd
 rm -rf oxwm
 sh -c 'printf "%s\n" "xset r rate 200 35 &" "exec oxwm;" > "$HOME/.xinitrc"'
 
-doas apk add xf86-video-intel # Install xf86-video-amdgpu if on an AMD system
+# Install xf86-video-amdgpu if on an AMD system
+doas apk add musl xf86-video-intel \
+    vim dmenu st dillo xwallpaper \
+    fastfetch
