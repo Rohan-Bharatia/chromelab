@@ -1,5 +1,8 @@
 # Installation Process
 
+> [!NOTE]
+> This code works on Debian, Alpine, Arch, and NixOS. These instructions describe how to implement this on Alpine Linux.
+
 1. Download the Alpine Linux Extended ISO from the [website](https://alpinelinux.org/downloads/).
 2. Plug in your USB drive and format the new ISO image onto it.
 3. Go into the BIOS and set the USB drive to be first in the boot order.

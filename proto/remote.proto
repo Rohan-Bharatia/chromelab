@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package chromelab;
+
+option cc_enable_arenas = true;
+
+enum WGState {
+    WG_STATE_UNSPECIFIED = 0;
+    WG_STATE_DOWN        = 1;
+    WG_STATE_UP          = 2;
+}
+
+message WGStatus {
+    WGState state           = 1;
+    string interface_name   = 2;
+    string public_key       = 3;
+    string listen_port      = 4;
+    string endpoint         = 5;
+    string dns              = 6;
+    repeated PeerInfo peers = 7;
+    string error            = 8;
+}
+
+message PeerInfo {
+    string name               = 1;
+    string public_key         = 2;
+    string allowed_ips        = 3;
+    string endpoint           = 4;
+    int64 latest_handshake_ms = 5;
+    int64 transfer_rx_bytes   = 6;
+    int64 transfer_tx_bytes   = 7;
+}
+
+message WGRequest {}
+
+message AddPeerRequest {
+    string name        = 1;
+    string public_key  = 2;
+    string allowed_ips = 3;
+    string endpoint    = 4;
+}
+
+message RemovePeerRequest {
+    string public_key = 1;
+}
+
+message PeersList {
+    repeated PeerInfo peers = 1;
+}

@@ -1,0 +1,43 @@
+#!/sbin/openrc-run
+
+NAME="labd"
+DESC="chromelab daemon"
+PIDFILE="/run/${NAME}/pid"
+LOGFILE="/var/log/${NAME}/${NAME}.log"
+CONFFILE="/etc/chromelab/labd.conf"
+SOCKET="/run/chromelab/labd.sock"
+DAEMON="/usr/local/bin/${NAME}"
+
+depend() {
+    need net
+    after firewall
+    keyword -stop
+}
+
+start() {
+    ebegin "Starting ${DESC}"
+
+    # Create required directories
+    install -d -o root -g root -m 0755 /run/${NAME}
+    install -d -o root -g root -m 0755 /var/log/${NAME}
+    install -d -o root -g root -m 0755 /var/lib/chromelab/models
+    install -d -o root -g root -m 0755 /var/lib/chromelab/events
+
+    # Remove stale socket
+    rm -f "${SOCKET}"
+
+    start-stop-daemon --start --background \
+        --make-pidfile --pidfile "${PIDFILE}" \
+        --exec "${DAEMON}" -- \
+            --socket "${SOCKET}" \
+            2>>"${LOGFILE}"
+
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping ${DESC}"
+    start-stop-daemon --stop --pidfile "${PIDFILE}"
+    rm -f "${SOCKET}"
+    eend $?
+}

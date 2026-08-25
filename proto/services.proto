@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package chromelab;
+
+option cc_enable_arenas = true;
+
+enum ServiceState {
+    SERVICE_STATE_UNSPECIFIED = 0;
+    SERVICE_STATE_STOPPED     = 1;
+    SERVICE_STATE_STARTING    = 2;
+    SERVICE_STATE_RUNNING     = 3;
+    SERVICE_STATE_STOPPING    = 4;
+    SERVICE_STATE_FAILED      = 5;
+}
+
+message ServiceInfo {
+    string name          = 1;
+    ServiceState state   = 2;
+    bool enabled         = 3;
+    string description   = 4;
+    string runlevel      = 5;
+    int64 pid            = 6;
+    string health_status = 7;
+}
+
+message ServiceRequest {
+    string name = 1;
+}
+
+message ServiceResponse {
+    string name                 = 1;
+    ServiceState previous_state = 2;
+    ServiceState current_state  = 3;
+    string error                = 4;
+}
+
+message ServicesList {
+    repeated ServiceInfo services = 1;
+}
+
+message HealthStatus {
+    string service_name = 1;
+    bool healthy        = 2;
+    string message      = 3;
+    int64 checked_at_ms = 4;
+}

@@ -1,0 +1,141 @@
+syntax = "proto3";
+
+package chromelab;
+
+option cc_enable_arenas = true;
+
+message CpuMetrics {
+    repeated CoreMetrics cores = 1;
+    double overall_percent     = 2;
+    int64 frequency_mhz        = 3;
+    int64 context_switches     = 4;
+    int64 interrupts           = 5;
+}
+
+message CoreMetrics {
+    int32 core_id  = 1;
+    double percent = 2;
+    int64 user     = 3;
+    int64 system   = 4;
+    int64 idle     = 5;
+}
+
+message MemoryMetrics {
+    int64 total_bytes      = 1;
+    int64 used_bytes       = 2;
+    int64 free_bytes       = 3;
+    int64 buffers_bytes    = 4;
+    int64 cached_bytes     = 5;
+    int64 swap_total_bytes = 6;
+    int64 swap_used_bytes  = 7;
+    double percent         = 8;
+    double swap_percent    = 9;
+}
+
+message DiskMetrics {
+    repeated DiskInfo disks             = 1;
+    repeated FilesystemInfo filesystems = 2;
+}
+
+message DiskInfo {
+    string name            = 1;
+    int64 reads_completed  = 2;
+    int64 reads_bytes      = 3;
+    int64 writes_completed = 4;
+    int64 writes_bytes     = 5;
+    int64 io_in_progress   = 6;
+    int64 io_time_ms       = 7;
+}
+
+message FilesystemInfo {
+    string mount_point    = 1;
+    string device         = 2;
+    string fstype         = 3;
+    int64 total_bytes     = 4;
+    int64 used_bytes      = 5;
+    int64 available_bytes = 6;
+    double percent        = 7;
+}
+
+message NetworkMetrics {
+    repeated InterfaceMetrics interfaces = 1;
+    int32 tcp_established                = 2;
+    int32 tcp_time_wait                  = 3;
+    int32 udp_connections                = 4;
+}
+
+message InterfaceMetrics {
+    string name      = 1;
+    int64 rx_bytes   = 2;
+    int64 rx_packets = 3;
+    int64 rx_errors  = 4;
+    int64 rx_dropped = 5;
+    int64 tx_bytes   = 6;
+    int64 tx_packets = 7;
+    int64 tx_errors  = 8;
+    int64 tx_dropped = 9;
+}
+
+message TemperatureMetrics {
+    repeated ThermalZone zones = 1;
+}
+
+message ThermalZone {
+    string name         = 1;
+    double temp_celsius = 2;
+    string type         = 3;
+}
+
+message LoadMetrics {
+    double load_1m  = 1;
+    double load_5m  = 2;
+    double load_15m = 3;
+}
+
+message ProcessMetrics {
+    int32 total    = 1;
+    int32 running  = 2;
+    int32 sleeping = 3;
+    int32 stopped  = 4;
+    int32 zombie   = 5;
+}
+
+message DnsMetrics {
+    int64 queries_total = 1;
+    int64 cache_hits    = 2;
+    int64 cache_misses  = 3;
+    int64 failures      = 4;
+}
+
+message SystemUptime {
+    int64 uptime_seconds = 1;
+    string uptime_human  = 2;
+}
+
+message MetricSnapshot {
+    int64 timestamp_ms             = 1;
+    CpuMetrics cpu                 = 2;
+    MemoryMetrics memory           = 3;
+    DiskMetrics disk               = 4;
+    NetworkMetrics network         = 5;
+    TemperatureMetrics temperature = 6;
+    LoadMetrics load               = 7;
+    ProcessMetrics processes       = 8;
+    DnsMetrics dns                 = 9;
+    SystemUptime uptime            = 10;
+}
+
+message MetricsRequest {
+    bool include_cpu         = 1;
+    bool include_memory      = 2;
+    bool include_disk        = 3;
+    bool include_network     = 4;
+    bool include_temperature = 5;
+    bool include_load        = 6;
+    bool include_processes   = 7;
+    bool include_dns         = 8;
+}
+
+message StreamRequest {
+    int32 interval_ms = 1;
+}

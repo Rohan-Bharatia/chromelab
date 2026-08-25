@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package chromelab;
+
+option cc_enable_arenas = true;
+
+import "telemetry.proto";
+import "events.proto";
+import "services.proto";
+import "ai.proto";
+import "remote.proto";
+
+// System
+message StatusResponse {
+    string version         = 1;
+    string hostname        = 2;
+    int64 uptime_seconds   = 3;
+    bool ai_loaded         = 4;
+    bool wireguard_active  = 5;
+    int32 services_running = 6;
+    int32 services_total   = 7;
+}
+
+message SystemInfo {
+    string hostname        = 1;
+    string kernel_version  = 2;
+    string alpine_version  = 3;
+    string arch            = 4;
+    int64 total_ram_bytes  = 5;
+    int64 total_disk_bytes = 6;
+    int32 cpu_cores        = 7;
+    string cpu_model       = 8;
+}
+
+message Config {
+    string raw_toml = 1;
+}
+
+message ValidateResponse {
+    bool valid               = 1;
+    repeated string errors   = 2;
+    repeated string warnings = 3;
+}
+
+message RebootRequest {
+    string reason       = 1;
+    int32 delay_seconds = 2;
+}
+
+// LabDaemon Service
+service LabDaemon {
+    // System
+    rpc GetStatus(Empty)       returns (StatusResponse);
+    rpc GetSystemInfo(Empty)   returns (SystemInfo);
+    rpc ValidateConfig(Config) returns (ValidateResponse);
+    rpc Reboot(RebootRequest)  returns (Empty);
+    rpc Shutdown(Empty)        returns (Empty);
+
+    // Telemetry
+    rpc GetMetrics(MetricsRequest)   returns (MetricSnapshot);
+    rpc StreamMetrics(StreamRequest) returns (stream MetricSnapshot);
+
+    // Events
+    rpc ListEvents(EventsRequest)   returns (EventsResponse);
+    rpc StreamEvents(StreamRequest) returns (stream Event);
+    rpc EmitEvent(Event)            returns (EmitResponse);
+
+    // Services
+    rpc ListServices(Empty)                returns (ServicesList);
+    rpc GetService(ServiceRequest)         returns (ServiceInfo);
+    rpc StartService(ServiceRequest)       returns (ServiceResponse);
+    rpc StopService(ServiceRequest)        returns (ServiceResponse);
+    rpc RestartService(ServiceRequest)     returns (ServiceResponse);
+    rpc EnableService(ServiceRequest)      returns (ServiceResponse);
+    rpc DisableService(ServiceRequest)     returns (ServiceResponse);
+    rpc CheckServiceHealth(ServiceRequest) returns (HealthStatus);
+
+    // AI
+    rpc GetAIStatus(Empty)        returns (AIStatus);
+    rpc ListModels(Empty)         returns (ModelsList);
+    rpc LoadModel(ModelRequest)   returns (AIStatus);
+    rpc UnloadModel(Empty)        returns (AIStatus);
+    rpc ChatComplete(ChatRequest) returns (ChatResponse);
+    rpc StreamChat(ChatRequest)   returns (stream ChatToken);
+
+    // Remote Access
+    rpc GetWireGuardStatus(WGRequest) returns (WGStatus);
+    rpc WireGuardUp(WGRequest)        returns (WGStatus);
+    rpc WireGuardDown(Empty)          returns (WGStatus);
+    rpc AddPeer(AddPeerRequest)       returns (WGStatus);
+    rpc RemovePeer(RemovePeerRequest) returns (WGStatus);
+    rpc ListPeers(Empty)              returns (PeersList);
+}

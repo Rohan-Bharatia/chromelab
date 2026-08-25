@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package chromelab;
+
+option cc_enable_arenas    = true;
+option java_multiple_files = true;
+
+message Empty {}
+
+enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    SEVERITY_INFO        = 1;
+    SEVERITY_WARNING     = 2;
+    SEVERITY_ERROR       = 3;
+    SEVERITY_CRITICAL    = 4;
+}
+
+enum EventCategory {
+    EVENT_CATEGORY_UNSPECIFIED = 0;
+    EVENT_CATEGORY_SYSTEM      = 1;
+    EVENT_CATEGORY_SERVICE     = 2;
+    EVENT_CATEGORY_NETWORK     = 3;
+    EVENT_CATEGORY_AI          = 4;
+    EVENT_CATEGORY_SECURITY    = 5;
+    EVENT_CATEGORY_DISK        = 6;
+    EVENT_CATEGORY_TEMPERATURE = 7;
+    EVENT_CATEGORY_DNS         = 8;
+}
+
+message Event {
+    int64 id                     = 1;
+    int64 timestamp_ms           = 2;
+    EventCategory category       = 3;
+    Severity severity            = 4;
+    string source                = 5;
+    string message               = 6;
+    map<string, string> metadata = 7;
+}
+
+message EventsRequest {
+    int32 limit                   = 1;
+    EventCategory category_filter = 2;
+    Severity severity_filter      = 3;
+    int64 since_ms                = 4;
+}
+
+message EventsResponse {
+    repeated Event events = 1;
+}
+
+message EmitResponse {
+    int64 event_id = 1;
+}
