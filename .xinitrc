@@ -1,3 +1,3 @@
 xset r rate 200 35 &
-xwallpaper --zoom ~/.local/wallpaper.jpg
+xrandr -s 1920x1080
 exec oxwm;

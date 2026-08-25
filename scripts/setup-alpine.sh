@@ -30,5 +30,6 @@ sh -c 'printf "%s\n" "xset r rate 200 35 &" "exec oxwm;" > "$HOME/.xinitrc"'
 
 # Install xf86-video-amdgpu if on an AMD system
 doas apk add musl xf86-video-intel \
+    font-terminus-nerd \
     vim dmenu st dillo xwallpaper \
     fastfetch
