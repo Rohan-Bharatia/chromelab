@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>chromelab</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uplot.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uplot.min.css">
+</head>
+<body>
+    <header>
+        <h1>chromelab</h1>
+        <div id="status-bar">
+            <span id="uptime"></span>
+            <span id="svc-count"></span>
+        </div>
+    </header>
+    <main>
+        <section class="charts">
+            <div class="chart-box">
+                <h2>CPU</h2>
+                <div id="cpu-chart"></div>
+                <div id="cpu-cores"></div>
+            </div>
+            <div class="chart-box">
+                <h2>Memory</h2>
+                <div id="mem-chart"></div>
+                <div id="mem-detail"></div>
+            </div>
+            <div class="chart-box">
+                <h2>Load</h2>
+                <div id="load-chart"></div>
+            </div>
+            <div class="chart-box">
+                <h2>Network</h2>
+                <div id="net-detail"></div>
+            </div>
+            <div class="chart-box">
+                <h2>Disk</h2>
+                <div id="disk-detail"></div>
+            </div>
+            <div class="chart-box">
+                <h2>Temperature</h2>
+                <div id="temp-detail"></div>
+            </div>
+        </section>
+        <section class="lower">
+            <div class="panel events-panel">
+                <h2>Events</h2>
+                <div id="events-list"></div>
+            </div>
+            <div class="panel services-panel">
+                <h2>Services</h2>
+                <div id="services-list"></div>
+            </div>
+        </section>
+    </main>
+    <script src="/js/app.js"></script>
+</body>
+</html>

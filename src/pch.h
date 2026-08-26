@@ -173,7 +173,17 @@
     #define _CRT_SECURE_NO_WARNINGS
 #endif // _CRT_SECURE_NO_WARNINGS
 #include <grpcpp/grpcpp.h>
+#include <google/protobuf/util/json_util.h>
 #include <toml++/toml.hpp>
+#include <microhttpd.h>
+#include <ncurses.h>
+
+#ifdef OK
+    #undef OK
+#endif // OK
+#ifdef ERR
+    #undef ERR
+#endif // ERR
 
 // Lab library headers
 #include "labd.grpc.pb.h"

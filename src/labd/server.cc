@@ -59,6 +59,15 @@ namespace chromelab {
 
         std::cout << "labd listening on " << m_config.socket_path << "\n";
 
+        // Start HTTP dashboard
+        m_httpd = std::make_unique<HttpServer>(m_config.http_port, m_config.web_dir, m_collector.get(), &m_store, m_services.get());
+
+        if (m_httpd->Start()) {
+            std::cout << "dashboard on http://localhost:" << m_config.http_port << "\n";
+        } else {
+            std::cerr << "warning: HTTP server failed to start on port " << m_config.http_port << "\n";
+        }
+
         // Emit startup event
         {
             Event startup;
@@ -81,6 +90,11 @@ namespace chromelab {
     }
 
     void LabDaemonImpl::Stop(void) {
+        // Stop HTTP server
+        if (m_httpd) {
+            m_httpd->Stop();
+        }
+
         // Stop telemetry collection first
         if (m_collector) {
             m_collector->Stop();

@@ -24,7 +24,7 @@
 
 #pragma endregion LICENSE
 
-#include "pch.h"
+#include "labctl/tui.h"
 
 static void usage(const char* prog) {
     std::cerr << "Usage: " << prog << " <command> [options]\n\n"
@@ -53,6 +53,7 @@ static void usage(const char* prog) {
               << "  wg down             Bring WireGuard down\n"
               << "  config validate     Validate configuration\n"
               << "  system info         Show system info\n"
+              << "  tui                 Live terminal dashboard\n"
               << "\nOptions:\n"
               << "  -s, --socket PATH   Daemon socket (default: /run/chromelab/labd.sock)\n"
               << "  -j, --json          Output as JSON\n"
@@ -481,6 +482,9 @@ int main(int argc, char* argv[]) {
     } if (cmd == "config") {
         std::cout << "Config commands not yet implemented\n";
         return 1;
+    } if (cmd == "tui") {
+        chromelab::Tui tui(socket_path);
+        return tui.Run();
     }
 
     std::cerr << "Unknown command: " << cmd << "\n";

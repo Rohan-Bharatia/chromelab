@@ -12,6 +12,7 @@ use_runtime("static")
 # Dependencies
 find_package(gRPC REQUIRED)
 find_package(Threads REQUIRED)
+find_library(MHD_LIBRARY NAMES microhttpd REQUIRED)
 
 add_subdirectory(third_party/toml++ EXCLUDE_FROM_ALL)
 
@@ -90,6 +91,7 @@ add_executable(labd
     src/labd/events/bus.cc
     src/labd/events/store.cc
     src/labd/services/manager.cc
+    src/labd/dashboard/httpd.cc
     src/labd/collector/collector.cc
     src/labd/collector/cpu.cc
     src/labd/collector/memory.cc
@@ -107,12 +109,15 @@ target_link_libraries(labd PRIVATE
     protobuf::libprotobuf
     Threads::Threads
     tomlplusplus::tomlplusplus
+    ${MHD_LIBRARY}
+    ncurses
 )
 target_precompile_headers(labd PRIVATE src/pch.h)
 
 # labctl (CLI)
 add_executable(labctl
     src/labctl/main.cc
+    src/labctl/tui.cc
 )
 target_include_directories(labctl PRIVATE src)
 target_link_libraries(labctl PRIVATE
@@ -121,6 +126,8 @@ target_link_libraries(labctl PRIVATE
     protobuf::libprotobuf
     Threads::Threads
     tomlplusplus::tomlplusplus
+    ${MHD_LIBRARY}
+    ncurses
 )
 target_precompile_headers(labctl PRIVATE src/pch.h)
 
