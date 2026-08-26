@@ -438,6 +438,154 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
     return 0;
 }
 
+static const char* model_status_str(chromelab::ModelStatus s) {
+    switch (s) {
+        case chromelab::MODEL_STATUS_UNLOADED:
+            return "unloaded";
+        case chromelab::MODEL_STATUS_LOADING:
+            return "loading";
+        case chromelab::MODEL_STATUS_READY:
+            return "ready";
+        case chromelab::MODEL_STATUS_ERROR:
+            return "error";
+        default:
+            return "unknown";
+    }
+}
+
+static int cmd_ai(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
+    if (start >= static_cast<int>(args.size())) {
+        std::cerr << "Usage: labctl ai <status|models|load|unload|chat> [args]\n";
+        return 1;
+    }
+
+    auto stub          = chromelab::LabDaemon::NewStub(channel);
+    const auto& action = args[start];
+
+    if (action == "status") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::AIStatus resp;
+        auto s = stub->GetAIStatus(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "AI: " << model_status_str(resp.status()) << "\n"
+                  << "  Model:  " << (resp.current_model().empty() ? "(none)" : resp.current_model()) << "\n"
+                  << "  Error:  " << (resp.error().empty() ? "-" : resp.error()) << "\n";
+        return 0;
+    }
+
+    if (action == "models") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::ModelsList resp;
+        auto s = stub->ListModels(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+        if (resp.models_size() == 0) {
+            std::cout << "No models found in models directory.\n";
+            return 0;
+        }
+
+        for (const auto& m : resp.models()) {
+            std::cout << (m.loaded() ? "* " : "  ") << m.name();
+            if (!m.quantization().empty()) {
+                std::cout << " [" << m.quantization() << "]";
+            }
+
+            if (m.size_bytes() > 0) {
+                std::cout << "  " << m.size_bytes() / (1024*1024) << " MB";
+            }
+
+            std::cout << "\n";
+        }
+        return 0;
+    }
+
+    if (action == "load") {
+        if (start + 1 >= static_cast<int>(args.size())) {
+            std::cerr << "Model name required\n";
+            return 1;
+        }
+
+        grpc::ClientContext ctx;
+        chromelab::ModelRequest req;
+        req.set_model_name(args[start + 1]);
+        chromelab::AIStatus resp;
+        auto s = stub->LoadModel(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Load: " << model_status_str(resp.status());
+        if (!resp.error().empty()) {
+            std::cout << " (" << resp.error() << ")";
+        }
+
+        std::cout << "\n";
+        return 0;
+    }
+
+    if (action == "unload") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::AIStatus resp;
+        auto s = stub->UnloadModel(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Unloaded.\n";
+        return 0;
+    }
+
+    if (action == "chat") {
+        // Collect remaining args as the prompt
+        std::string prompt;
+        for (int i = start + 1; i < static_cast<int>(args.size()); i++) {
+            if (i > start + 1) {
+                prompt += " ";
+            }
+            prompt += args[i];
+        }
+        if (prompt.empty()) {
+            std::cerr << "Prompt required\n";
+            return 1;
+        }
+
+        grpc::ClientContext ctx;
+        chromelab::ChatRequest req;
+        auto* msg = req.add_messages();
+        msg->set_role("user");
+        msg->set_content(prompt);
+        req.set_max_tokens(512);
+        req.set_temperature(0.7);
+
+        chromelab::ChatResponse resp;
+        auto s = stub->ChatComplete(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << resp.content() << "\n";
+        std::cerr << "\n[" << resp.tokens_generated() << " tokens, "
+                  << resp.prompt_eval_ms() << "ms prompt, "
+                  << resp.eval_ms() << "ms eval]\n";
+        return 0;
+    }
+
+    std::cerr << "Unknown AI action: " << action << "\n";
+    return 1;
+}
+
 int main(int argc, char* argv[]) {
     std::string socket_path = "/run/chromelab/labd.sock";
 
@@ -477,8 +625,7 @@ int main(int argc, char* argv[]) {
         std::cout << "WireGuard commands not yet implemented\n";
         return 1;
     } if (cmd == "ai") {
-        std::cout << "AI commands not yet implemented\n";
-        return 1;
+        return cmd_ai(channel, args, 1);
     } if (cmd == "config") {
         std::cout << "Config commands not yet implemented\n";
         return 1;

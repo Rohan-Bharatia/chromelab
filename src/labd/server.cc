@@ -42,6 +42,13 @@ namespace chromelab {
         if (!config.events_dir.empty()) {
             m_store.EnableDisk(config.events_dir);
         }
+
+        if (config.ai_enabled) {
+            m_ai = std::make_unique<AiEngine>(config.models_dir, config.ai_max_ram, &m_bus);
+            if (!config.ai_default_model.empty()) {
+                m_ai->Load(config.ai_default_model);
+            }
+        }
     }
 
     void LabDaemonImpl::Run(void) {
@@ -122,7 +129,7 @@ namespace chromelab {
         resp->set_version("0.1.0");
         resp->set_hostname("chromelab");
         resp->set_uptime_seconds(snap.uptime().uptime_seconds());
-        resp->set_ai_loaded(false);
+        resp->set_ai_loaded(m_ai && m_ai->GetStatus().status() == MODEL_STATUS_READY);
         resp->set_wireguard_active(false);
         resp->set_services_running(running);
         resp->set_services_total(static_cast<int32_t>(services.size()));
@@ -336,36 +343,88 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::GetAIStatus(grpc::ServerContext* ctx, const Empty* req, AIStatus* resp) {
-        resp->set_status(ModelStatus::MODEL_STATUS_UNLOADED);
-
+        if (!m_ai) {
+            resp->set_status(ModelStatus::MODEL_STATUS_UNLOADED);
+            resp->set_error("AI not enabled in config");
+            return grpc::Status::OK;
+        }
+        *resp = m_ai->GetStatus();
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::ListModels(grpc::ServerContext* ctx, const Empty* req, ModelsList* resp) {
+        if (!m_ai) {
+            return grpc::Status::OK;
+        }
+
+        auto models = m_ai->ListModels();
+        for (auto& m : models) {
+            *resp->add_models() = std::move(m);
+        }
+
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::LoadModel(grpc::ServerContext* ctx, const ModelRequest* req, AIStatus* resp) {
-        resp->set_status(ModelStatus::MODEL_STATUS_ERROR);
-        resp->set_error("AI module not yet implemented");
+        if (!m_ai) {
+            resp->set_status(ModelStatus::MODEL_STATUS_ERROR);
+            resp->set_error("AI not enabled in config");
+            return grpc::Status::OK;
+        }
 
+        *resp = m_ai->Load(req->model_name());
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::UnloadModel(grpc::ServerContext* ctx, const Empty* req, AIStatus* resp) {
-        resp->set_status(ModelStatus::MODEL_STATUS_UNLOADED);
+        if (!m_ai) {
+            resp->set_status(ModelStatus::MODEL_STATUS_UNLOADED);
+            return grpc::Status::OK;
+        }
 
+        *resp = m_ai->Unload();
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::ChatComplete(grpc::ServerContext* ctx, const ChatRequest* req, ChatResponse* resp) {
-        resp->set_content("AI module not yet implemented");
+        if (!m_ai) {
+            resp->set_content("AI not enabled in config");
+            return grpc::Status::OK;
+        }
+
+        int32_t max_tokens = req->max_tokens() > 0 ? req->max_tokens() : 512;
+        double temp        = req->temperature() > 0 ? req->temperature() : 0.7;
+
+        auto result = m_ai->ChatComplete({ req->messages().begin(), req->messages().end() }, max_tokens, temp);
+
+        resp->set_content(result.content);
+        resp->set_tokens_generated(result.tokens_generated);
+        resp->set_prompt_eval_ms(result.prompt_eval_ms);
+        resp->set_eval_ms(result.eval_ms);
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::StreamChat(grpc::ServerContext* ctx, const ChatRequest* req, grpc::ServerWriter<ChatToken>* writer) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "AI not yet implemented");
+        if (!m_ai) {
+            ChatToken tok;
+            tok.set_token("AI not enabled in config");
+            tok.set_done(true);
+            writer->Write(tok);
+            return grpc::Status::OK;
+        }
+
+        int32_t max_tokens = req->max_tokens() > 0 ? req->max_tokens() : 512;
+        double temp        = req->temperature() > 0 ? req->temperature() : 0.7;
+
+        m_ai->StreamChat({ req->messages().begin(), req->messages().end() }, max_tokens, temp, [&](const std::string& token, bool done) -> bool {
+            ChatToken tok;
+            tok.set_token(token);
+            tok.set_done(done);
+            return writer->Write(tok);
+        });
+
+        return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::GetWireGuardStatus(grpc::ServerContext* ctx, const WGRequest* req, WGStatus* resp) {

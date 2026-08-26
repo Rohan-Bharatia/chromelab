@@ -177,6 +177,7 @@
 #include <toml++/toml.hpp>
 #include <microhttpd.h>
 #include <ncurses.h>
+#include <llama.h>
 
 #ifdef OK
     #undef OK

@@ -13,6 +13,7 @@ use_runtime("static")
 find_package(gRPC REQUIRED)
 find_package(Threads REQUIRED)
 find_library(MHD_LIBRARY NAMES microhttpd REQUIRED)
+find_library(LLAMA_LIBRARY NAMES llama REQUIRED)
 
 add_subdirectory(third_party/toml++ EXCLUDE_FROM_ALL)
 
@@ -92,6 +93,7 @@ add_executable(labd
     src/labd/events/store.cc
     src/labd/services/manager.cc
     src/labd/dashboard/httpd.cc
+    src/labd/ai/engine.cc
     src/labd/collector/collector.cc
     src/labd/collector/cpu.cc
     src/labd/collector/memory.cc
@@ -111,6 +113,7 @@ target_link_libraries(labd PRIVATE
     tomlplusplus::tomlplusplus
     ${MHD_LIBRARY}
     ncurses
+    ${LLAMA_LIBRARY}
 )
 target_precompile_headers(labd PRIVATE src/pch.h)
 
@@ -128,6 +131,7 @@ target_link_libraries(labctl PRIVATE
     tomlplusplus::tomlplusplus
     ${MHD_LIBRARY}
     ncurses
+    ${LLAMA_LIBRARY}
 )
 target_precompile_headers(labctl PRIVATE src/pch.h)
 
