@@ -35,6 +35,7 @@
 #include "labd/collector/collector.h"
 #include "labd/events/bus.h"
 #include "labd/events/store.h"
+#include "labd/services/manager.h"
 
 namespace chromelab {
 
@@ -93,6 +94,7 @@ namespace chromelab {
         LabdConfig m_config;
         std::unique_ptr<grpc::Server> m_server;
         std::unique_ptr<CollectorOrchestrator> m_collector;
+        std::unique_ptr<ServiceManager> m_services;
         EventBus m_bus;
         EventStore m_store;
         std::atomic<bool> m_running{false};

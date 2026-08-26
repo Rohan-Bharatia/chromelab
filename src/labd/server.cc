@@ -36,6 +36,7 @@ namespace chromelab {
     LabDaemonImpl::LabDaemonImpl(const LabdConfig& config) :
         m_config(config),
         m_collector(std::make_unique<CollectorOrchestrator>(config, &m_bus)),
+        m_services(std::make_unique<ServiceManager>(&m_bus)),
         m_store(10000) {
 
         if (!config.events_dir.empty()) {
@@ -96,13 +97,21 @@ namespace chromelab {
 
     grpc::Status LabDaemonImpl::GetStatus(grpc::ServerContext* ctx, const Empty* req, StatusResponse* resp) {
         auto snap = m_collector->GetSnapshot();
+
+        // Count running services
+        auto services = m_services->ListServices();
+        int running   = 0;
+        for (const auto& svc : services) {
+            if (svc.state() == SERVICE_STATE_RUNNING) running++;
+        }
+
         resp->set_version("0.1.0");
         resp->set_hostname("chromelab");
         resp->set_uptime_seconds(snap.uptime().uptime_seconds());
         resp->set_ai_loaded(false);
         resp->set_wireguard_active(false);
-        resp->set_services_running(0);
-        resp->set_services_total(0);
+        resp->set_services_running(running);
+        resp->set_services_total(static_cast<int32_t>(services.size()));
 
         return grpc::Status::OK;
     }
@@ -219,35 +228,97 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::ListServices(grpc::ServerContext* ctx, const Empty* req, ServicesList* resp) {
+        auto services = m_services->ListServices();
+        for (auto& svc : services) {
+            *resp->add_services() = std::move(svc);
+        }
+
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::GetService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceInfo* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto info = m_services->GetService(req->name());
+        if (!info) {
+            return grpc::Status(grpc::StatusCode::NOT_FOUND, "service not found: " + req->name());
+        }
+
+        *resp = std::move(*info);
+
+        return grpc::Status::OK;
+    }
+
+    static grpc::Status to_grpc(const ServiceManager::ActionResult& r) {
+        if (!r.error.empty()) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, r.error);
+        }
+
+        return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::StartService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceResponse* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto r = m_services->Start(req->name());
+        resp->set_name(r.name);
+        resp->set_previous_state(r.previous_state);
+        resp->set_current_state(r.current_state);
+        if (!r.error.empty()) {
+            resp->set_error(r.error);
+        }
+
+        return to_grpc(r);
     }
 
     grpc::Status LabDaemonImpl::StopService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceResponse* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto r = m_services->Stop(req->name());
+        resp->set_name(r.name);
+        resp->set_previous_state(r.previous_state);
+        resp->set_current_state(r.current_state);
+        if (!r.error.empty()) {
+            resp->set_error(r.error);
+        }
+
+        return to_grpc(r);
     }
 
     grpc::Status LabDaemonImpl::RestartService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceResponse* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto r = m_services->Restart(req->name());
+        resp->set_name(r.name);
+        resp->set_previous_state(r.previous_state);
+        resp->set_current_state(r.current_state);
+        if (!r.error.empty()) {
+            resp->set_error(r.error);
+        }
+
+        return to_grpc(r);
     }
 
     grpc::Status LabDaemonImpl::EnableService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceResponse* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto r = m_services->Enable(req->name());
+        resp->set_name(r.name);
+        resp->set_previous_state(r.previous_state);
+        resp->set_current_state(r.current_state);
+        if (!r.error.empty()) {
+            resp->set_error(r.error);
+        }
+
+        return to_grpc(r);
     }
 
     grpc::Status LabDaemonImpl::DisableService(grpc::ServerContext* ctx, const ServiceRequest* req, ServiceResponse* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        auto r = m_services->Disable(req->name());
+        resp->set_name(r.name);
+        resp->set_previous_state(r.previous_state);
+        resp->set_current_state(r.current_state);
+        if (!r.error.empty()) {
+            resp->set_error(r.error);
+        }
+
+        return to_grpc(r);
     }
 
     grpc::Status LabDaemonImpl::CheckServiceHealth(grpc::ServerContext* ctx, const ServiceRequest* req, HealthStatus* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        *resp = m_services->CheckHealth(req->name());
+
+        return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::GetAIStatus(grpc::ServerContext* ctx, const Empty* req, AIStatus* resp) {

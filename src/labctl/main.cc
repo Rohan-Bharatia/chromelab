@@ -36,11 +36,13 @@ static void usage(const char* prog) {
               << "  events              List recent events\n"
               << "  events --tail       Stream events live\n"
               << "  svc list            List services\n"
+              << "  svc info <name>     Show service info\n"
               << "  svc start <name>    Start a service\n"
               << "  svc stop <name>     Stop a service\n"
               << "  svc restart <name>  Restart a service\n"
               << "  svc enable <name>   Enable a service\n"
               << "  svc disable <name>  Disable a service\n"
+              << "  svc health <name>   Check service health\n"
               << "  ai status           AI module status\n"
               << "  ai models           List available models\n"
               << "  ai load <model>     Load a model\n"
@@ -301,6 +303,23 @@ static int cmd_events(const std::shared_ptr<grpc::Channel>& channel, bool tail) 
     return 0;
 }
 
+static const char* svc_state_str(chromelab::ServiceState s) {
+    switch (s) {
+        case chromelab::SERVICE_STATE_RUNNING:
+            return "running";
+        case chromelab::SERVICE_STATE_STOPPED:
+            return "stopped";
+        case chromelab::SERVICE_STATE_STARTING:
+            return "starting";
+        case chromelab::SERVICE_STATE_STOPPING:
+            return "stopping";
+        case chromelab::SERVICE_STATE_FAILED:
+            return "failed";
+        default:
+            return "unknown";
+    }
+}
+
 static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
     if (start >= static_cast<int>(args.size())) {
         std::cerr << "Usage: labctl svc <list|start|stop|restart|enable|disable> [name]\n";
@@ -321,12 +340,31 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
             return 1;
         }
 
-        for (const auto& svc : resp.services()) {
-            std::cout << svc.name() << "\t"
-                      << (svc.enabled() ? "enabled" : "disabled") << "\t"
-                      << svc.description() << "\n";
+        if (resp.services_size() == 0) {
+            std::cout << "No services found.\n";
+            return 0;
         }
 
+        std::cout << "NAME                         STATE      ENABLED\n";
+        std::cout << "─────────────────────────────────────────────────\n";
+        for (const auto& svc : resp.services()) {
+            std::cout << svc.name();
+
+            // Pad to 29 chars
+            for (int p = svc.name().size(); p < 29; ++p) {
+                std::cout << ' ';
+            }
+
+            std::cout << svc_state_str(svc.state());
+
+            // Pad state to 11 chars
+            std::string s = svc_state_str(svc.state());
+            for (int p = s.size(); p < 11; ++p) {
+                std::cout << ' ';
+            }
+
+            std::cout << (svc.enabled() ? "yes" : "no") << "\n";
+        }
         return 0;
     }
 
@@ -337,9 +375,25 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
 
     chromelab::ServiceRequest req;
     req.set_name(args[start + 1]);
-    chromelab::ServiceResponse resp;
     grpc::ClientContext ctx;
 
+    if (action == "info") {
+        chromelab::ServiceInfo info;
+        auto status = stub->GetService(&ctx, req, &info);
+        if (!status.ok()) {
+            std::cerr << "Error: " << status.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Service: " << info.name() << "\n"
+                  << "  State:   " << svc_state_str(info.state()) << "\n"
+                  << "  Enabled: " << (info.enabled() ? "yes" : "no") << "\n"
+                  << "  Runlevel: " << info.runlevel() << "\n";
+
+        return 0;
+    }
+
+    chromelab::ServiceResponse resp;
     grpc::Status status;
     if (action == "start") {
         status = stub->StartService(&ctx, req, &resp);
@@ -351,8 +405,21 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
         status = stub->EnableService(&ctx, req, &resp);
     } else if (action == "disable") {
         status = stub->DisableService(&ctx, req, &resp);
+    } else if (action == "health") {
+        chromelab::HealthStatus health;
+        auto s = stub->CheckServiceHealth(&ctx, req, &health);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << health.service_name() << ": " << (health.healthy() ? "healthy" : "unhealthy")
+                  << " (" << health.message() << ")\n";
+
+        return 0;
     } else {
         std::cerr << "Unknown action: " << action << "\n";
+        std::cerr << "Usage: labctl svc <list|info|start|stop|restart|enable|disable|health> [name]\n";
         return 1;
     }
 
@@ -366,7 +433,7 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
         return 1;
     }
 
-    std::cout << resp.name() << ": " << resp.current_state() << "\n";
+    std::cout << resp.name() << ": " << svc_state_str(resp.current_state()) << "\n";
     return 0;
 }
 

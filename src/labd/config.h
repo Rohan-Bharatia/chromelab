@@ -77,8 +77,8 @@ namespace chromelab {
         std::vector<std::string> tel_disk_devices;
     };
 
-    bool load_config(const std::string& path, LabdConfig& out, std::string& err_out);
-    std::string config_to_string(const LabdConfig& cfg);
+    bool LoadConfig(const std::string& path, LabdConfig& out, std::string& err_out);
+    std::string ConfigToString(const LabdConfig& cfg);
 } // namespace chromelab
 
 #endif // _LABD_CONFIG_H_

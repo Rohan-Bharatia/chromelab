@@ -106,7 +106,7 @@ static void usage(const char* prog) {
 static bool reload_config(const std::string& path, chromelab::LabdConfig& cfg) {
     std::string err;
     chromelab::LabdConfig fresh;
-    if (!chromelab::load_config(path, fresh, err)) {
+    if (!chromelab::LoadConfig(path, fresh, err)) {
         std::cerr << "config reload failed: " << err << "\n";
         return false;
     }
@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
 
     if (std::filesystem::exists(config_path)) {
         std::string err;
-        if (!chromelab::load_config(config_path, config, err)) {
+        if (!chromelab::LoadConfig(config_path, config, err)) {
             std::cerr << "FATAL: " << err << "\n";
             return 1;
         }

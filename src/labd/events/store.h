@@ -29,6 +29,8 @@
 #ifndef _LABD_EVENTS_STORE_H_
     #define _LABD_EVENTS_STORE_H_ (1)
 
+#include "pch.h"
+
 namespace chromelab {
     // Thread-safe ring buffer for protobuf Event objects with optional append-to-disk support
     class EventStore {

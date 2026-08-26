@@ -29,6 +29,8 @@
 #ifndef _LABD_EVENTS_BUS_H_
     #define _LABD_EVENTS_BUS_H_ (1)
 
+#include "pch.h"
+
 namespace chromelab {
     // A simple pub/sub event bus
     class EventBus {

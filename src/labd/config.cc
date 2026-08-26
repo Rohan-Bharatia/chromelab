@@ -28,7 +28,7 @@
 
 namespace chromelab {
     template<typename T>
-    static T get_or(const toml::table& tbl, std::string_view key, T default_val) {
+    static T GetOr(const toml::table& tbl, std::string_view key, T default_val) {
         if (auto node = tbl.get(key)) {
             if (auto val = node->value<T>()) {
                 return *val;
@@ -38,7 +38,7 @@ namespace chromelab {
         return default_val;
     }
 
-    static std::string get_str(const toml::table& tbl, std::string_view key, const std::string& default_val) {
+    static std::string GetStr(const toml::table& tbl, std::string_view key, const std::string& default_val) {
         if (auto node = tbl.get(key)) {
             if (auto val = node->value<std::string>()) {
                 return *val;
@@ -48,7 +48,7 @@ namespace chromelab {
         return default_val;
     }
 
-    static std::vector<std::string> get_str_array(const toml::table& tbl, std::string_view key) {
+    static std::vector<std::string> GetStrArray(const toml::table& tbl, std::string_view key) {
         std::vector<std::string> result;
         if (auto node = tbl.get(key)) {
             if (auto arr = node->as_array()) {
@@ -63,74 +63,74 @@ namespace chromelab {
         return result;
     }
 
-    bool load_config(const std::string& path, LabdConfig& out, std::string& err_out) {
+    bool LoadConfig(const std::string& path, LabdConfig& out, std::string& err_out) {
         try {
             toml::table tbl = toml::parse_file(path);
 
             // Daemon
             if (auto node = tbl.get("daemon")) {
                 if (auto* daemon = node->as_table()) {
-                    out.socket_path         = get_str(*daemon, "socket", out.socket_path);
-                    out.http_port           = get_or<uint16_t>(*daemon, "http_port", out.http_port);
-                    out.metrics_interval_ms = get_or<int>(*daemon, "metrics_interval", out.metrics_interval_ms);
-                    out.log_level           = get_str(*daemon, "log_level", out.log_level);
-                    out.log_file            = get_str(*daemon, "log_file", out.log_file);
-                    out.daemonize           = get_or<bool>(*daemon, "daemonize", out.daemonize);
-                    out.pid_file            = get_str(*daemon, "pid_file", out.pid_file);
+                    out.socket_path         = GetStr(*daemon, "socket", out.socket_path);
+                    out.http_port           = GetOr<uint16_t>(*daemon, "http_port", out.http_port);
+                    out.metrics_interval_ms = GetOr<int>(*daemon, "metrics_interval", out.metrics_interval_ms);
+                    out.log_level           = GetStr(*daemon, "log_level", out.log_level);
+                    out.log_file            = GetStr(*daemon, "log_file", out.log_file);
+                    out.daemonize           = GetOr<bool>(*daemon, "daemonize", out.daemonize);
+                    out.pid_file            = GetStr(*daemon, "pid_file", out.pid_file);
                 }
             }
 
             // Paths
             if (auto node = tbl.get("paths")) {
                 if (auto* paths = node->as_table()) {
-                    out.web_dir     = get_str(*paths, "web_dir", out.web_dir);
-                    out.models_dir  = get_str(*paths, "models_dir", out.models_dir);
-                    out.events_dir  = get_str(*paths, "events_dir", out.events_dir);
+                    out.web_dir     = GetStr(*paths, "web_dir", out.web_dir);
+                    out.models_dir  = GetStr(*paths, "models_dir", out.models_dir);
+                    out.events_dir  = GetStr(*paths, "events_dir", out.events_dir);
                 }
             }
 
             // AI
             if (auto node = tbl.get("ai")) {
                 if (auto* ai = node->as_table()) {
-                    out.ai_enabled       = get_or<bool>(*ai, "enabled", out.ai_enabled);
-                    out.ai_default_model = get_str(*ai, "default_model", out.ai_default_model);
-                    out.ai_max_ram       = get_or<int64_t>(*ai, "max_ram", out.ai_max_ram);
+                    out.ai_enabled       = GetOr<bool>(*ai, "enabled", out.ai_enabled);
+                    out.ai_default_model = GetStr(*ai, "default_model", out.ai_default_model);
+                    out.ai_max_ram       = GetOr<int64_t>(*ai, "max_ram", out.ai_max_ram);
                 }
             }
 
             // Wireguard
             if (auto node = tbl.get("wireguard")) {
                 if (auto* wg = node->as_table()) {
-                    out.wg_enabled    = get_or<bool>(*wg, "enabled", out.wg_enabled);
-                    out.wg_interface  = get_str(*wg, "interface", out.wg_interface);
-                    out.wg_listen_port = get_or<uint16_t>(*wg, "listen_port", out.wg_listen_port);
-                    out.wg_cidr       = get_str(*wg, "cidr", out.wg_cidr);
-                    out.wg_dns        = get_str(*wg, "dns", out.wg_dns);
+                    out.wg_enabled    = GetOr<bool>(*wg, "enabled", out.wg_enabled);
+                    out.wg_interface  = GetStr(*wg, "interface", out.wg_interface);
+                    out.wg_listen_port = GetOr<uint16_t>(*wg, "listen_port", out.wg_listen_port);
+                    out.wg_cidr       = GetStr(*wg, "cidr", out.wg_cidr);
+                    out.wg_dns        = GetStr(*wg, "dns", out.wg_dns);
                 }
             }
 
             // DNS
             if (auto node = tbl.get("dns")) {
                 if (auto* dns = node->as_table()) {
-                    out.dns_enabled = get_or<bool>(*dns, "enabled", out.dns_enabled);
-                    out.dns_domain  = get_str(*dns, "domain", out.dns_domain);
+                    out.dns_enabled = GetOr<bool>(*dns, "enabled", out.dns_enabled);
+                    out.dns_domain  = GetStr(*dns, "domain", out.dns_domain);
                 }
             }
 
             // Telemetry
             if (auto node = tbl.get("telemetry")) {
                 if (auto* tel = node->as_table()) {
-                    out.tel_cpu                = get_or<bool>(*tel, "cpu", out.tel_cpu);
-                    out.tel_memory             = get_or<bool>(*tel, "memory", out.tel_memory);
-                    out.tel_disk               = get_or<bool>(*tel, "disk", out.tel_disk);
-                    out.tel_network            = get_or<bool>(*tel, "network", out.tel_network);
-                    out.tel_temperature        = get_or<bool>(*tel, "temperature", out.tel_temperature);
-                    out.tel_load               = get_or<bool>(*tel, "load", out.tel_load);
-                    out.tel_processes          = get_or<bool>(*tel, "processes", out.tel_processes);
-                    out.tel_dns                = get_or<bool>(*tel, "dns", out.tel_dns);
-                    out.tel_uptime             = get_or<bool>(*tel, "uptime", out.tel_uptime);
-                    out.tel_network_interfaces = get_str_array(*tel, "network_interfaces");
-                    out.tel_disk_devices       = get_str_array(*tel, "disk_devices");
+                    out.tel_cpu                = GetOr<bool>(*tel, "cpu", out.tel_cpu);
+                    out.tel_memory             = GetOr<bool>(*tel, "memory", out.tel_memory);
+                    out.tel_disk               = GetOr<bool>(*tel, "disk", out.tel_disk);
+                    out.tel_network            = GetOr<bool>(*tel, "network", out.tel_network);
+                    out.tel_temperature        = GetOr<bool>(*tel, "temperature", out.tel_temperature);
+                    out.tel_load               = GetOr<bool>(*tel, "load", out.tel_load);
+                    out.tel_processes          = GetOr<bool>(*tel, "processes", out.tel_processes);
+                    out.tel_dns                = GetOr<bool>(*tel, "dns", out.tel_dns);
+                    out.tel_uptime             = GetOr<bool>(*tel, "uptime", out.tel_uptime);
+                    out.tel_network_interfaces = GetStrArray(*tel, "network_interfaces");
+                    out.tel_disk_devices       = GetStrArray(*tel, "disk_devices");
                 }
             }
 
@@ -147,7 +147,7 @@ namespace chromelab {
         }
     }
 
-    std::string config_to_string(const LabdConfig& cfg) {
+    std::string ConfigToString(const LabdConfig& cfg) {
         std::ostringstream os;
         os << "[daemon]\n"
            << "  socket           = \"" << cfg.socket_path << "\"\n"
