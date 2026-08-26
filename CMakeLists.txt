@@ -87,6 +87,8 @@ add_executable(labd
     src/labd/main.cc
     src/labd/server.cc
     src/labd/config.cc
+    src/labd/events/bus.cc
+    src/labd/events/store.cc
     src/labd/collector/collector.cc
     src/labd/collector/cpu.cc
     src/labd/collector/memory.cc

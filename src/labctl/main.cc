@@ -205,6 +205,102 @@ static int cmd_metrics(const std::shared_ptr<grpc::Channel>& channel, bool watch
     return 0;
 }
 
+static const char* severity_str(chromelab::Severity sev) {
+    switch (sev) {
+        case chromelab::SEVERITY_INFO:
+            return "INFO";
+        case chromelab::SEVERITY_WARNING:
+            return "WARN";
+        case chromelab::SEVERITY_ERROR:
+            return "ERR";
+        case chromelab::SEVERITY_CRITICAL:
+            return "CRIT";
+        default:
+            return "---";
+    }
+}
+
+static const char* category_str(chromelab::EventCategory cat) {
+    switch (cat) {
+        case chromelab::EVENT_CATEGORY_SYSTEM:
+            return "system";
+        case chromelab::EVENT_CATEGORY_SERVICE:
+            return "service";
+        case chromelab::EVENT_CATEGORY_NETWORK:
+            return "network";
+        case chromelab::EVENT_CATEGORY_AI:
+            return "ai";
+        case chromelab::EVENT_CATEGORY_SECURITY:
+            return "security";
+        case chromelab::EVENT_CATEGORY_DISK:
+            return "disk";
+        case chromelab::EVENT_CATEGORY_TEMPERATURE:
+            return "temp";
+        case chromelab::EVENT_CATEGORY_DNS:
+            return "dns";
+        default:
+            return "other";
+    }
+}
+
+static int cmd_events(const std::shared_ptr<grpc::Channel>& channel, bool tail) {
+    auto stub = chromelab::LabDaemon::NewStub(channel);
+
+    if (tail) {
+        grpc::ClientContext ctx;
+        chromelab::StreamRequest req;
+        req.set_interval_ms(0);
+        auto reader = stub->StreamEvents(&ctx, req);
+
+        chromelab::Event event;
+        while (reader->Read(&event)) {
+            auto ts     = std::chrono::system_clock::time_point(std::chrono::milliseconds(event.timestamp_ms()));
+            auto time_t = std::chrono::system_clock::to_time_t(ts);
+            char buf[20];
+            std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&time_t));
+
+            std::cout << buf << "  "
+                      << severity_str(event.severity()) << "  "
+                      << category_str(event.category()) << "  "
+                      << event.source() << ": "
+                      << event.message() << "\n" << std::flush;
+        }
+
+        return 0;
+    }
+
+    grpc::ClientContext ctx;
+    chromelab::EventsRequest req;
+    req.set_limit(50);
+    chromelab::EventsResponse resp;
+
+    auto status = stub->ListEvents(&ctx, req, &resp);
+    if (!status.ok()) {
+        std::cerr << "Error: " << status.error_message() << "\n";
+        return 1;
+    }
+
+    if (resp.events_size() == 0) {
+        std::cout << "No events recorded.\n";
+        return 0;
+    }
+
+    for (const auto& ev : resp.events()) {
+        auto ts     = std::chrono::system_clock::time_point(std::chrono::milliseconds(ev.timestamp_ms()));
+        auto time_t = std::chrono::system_clock::to_time_t(ts);
+        char buf[20];
+        std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&time_t));
+
+        std::cout << buf << "  "
+                  << severity_str(ev.severity()) << "  "
+                  << category_str(ev.category()) << "  "
+                  << ev.source() << ": "
+                  << ev.message() << "\n";
+    }
+
+    return 0;
+}
+
 static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
     if (start >= static_cast<int>(args.size())) {
         std::cerr << "Usage: labctl svc <list|start|stop|restart|enable|disable> [name]\n";
@@ -301,9 +397,12 @@ int main(int argc, char* argv[]) {
         return cmd_status(channel);
     } if (cmd == "info" || cmd == "system") {
         return cmd_info(channel);
-    } if (cmd == "metrics") {
+    }     if (cmd == "metrics") {
         bool watch = (args.size() > 1 && args[1] == "--watch");
         return cmd_metrics(channel, watch);
+    } if (cmd == "events") {
+        bool tail = (args.size() > 1 && args[1] == "--tail");
+        return cmd_events(channel, tail);
     } if (cmd == "svc") {
         return cmd_svc(channel, args, 1);
     } if (cmd == "wg") {

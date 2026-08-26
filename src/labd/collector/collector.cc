@@ -33,10 +33,11 @@
 #include "labd/collector/load.h"
 #include "labd/collector/processes.h"
 #include "labd/collector/uptime.h"
+#include "labd/events/bus.h"
 
 namespace chromelab {
-    CollectorOrchestrator::CollectorOrchestrator(const LabdConfig& config)
-        : m_interval_ms(config.metrics_interval_ms) {
+    CollectorOrchestrator::CollectorOrchestrator(const LabdConfig& config, EventBus* bus)
+        : m_interval_ms(config.metrics_interval_ms), m_bus(bus) {
 
         // Register collectors based on config
         if (config.tel_cpu) {
@@ -103,7 +104,81 @@ namespace chromelab {
             collector->Collect(snap);
         }
 
-        std::lock_guard lock(m_mutex);
-        m_latest = std::move(snap);
+        {
+            std::lock_guard lock(m_mutex);
+            m_latest = std::move(snap);
+        }
+
+        if (m_bus != nullptr) {
+            CheckThresholds(m_latest);
+        }
+    }
+
+    static void emit_alarm(EventBus* bus, const std::string& msg, Severity sev) {
+        Event event;
+        event.set_category(EVENT_CATEGORY_SYSTEM);
+        event.set_severity(sev);
+        event.set_source("collector");
+        event.set_message(msg);
+        bus->Emit(event);
+    }
+
+    void CollectorOrchestrator::CheckThresholds(const MetricSnapshot& snap) {
+        // CPU
+        bool cpu_high = snap.cpu().overall_percent() > 90.0;
+        if (cpu_high && !m_was_cpu_high) {
+            std::ostringstream oss;
+            oss << "CPU usage high: " << snap.cpu().overall_percent() << "%";
+            emit_alarm(m_bus, oss.str(), SEVERITY_WARNING);
+        }
+        m_was_cpu_high = cpu_high;
+
+        // Memory
+        bool mem_high = snap.memory().percent() > 90.0;
+        if (mem_high && !m_was_mem_high) {
+            std::ostringstream oss;
+            oss << "Memory usage high: " << snap.memory().percent() << "%";
+            emit_alarm(m_bus, oss.str(), SEVERITY_WARNING);
+        }
+        m_was_mem_high = mem_high;
+
+        // Disk (check any filesystem)
+        bool disk_high = false;
+        for (const auto& fs : snap.disk().filesystems()) {
+            if (fs.percent() > 95.0) {
+                disk_high = true;
+                if (!m_was_disk_high) {
+                    std::ostringstream oss;
+                    oss << "Disk usage critical on " << fs.mount_point() << ": " << fs.percent() << "%";
+                    emit_alarm(m_bus, oss.str(), SEVERITY_ERROR);
+                }
+                break;
+            }
+        }
+        m_was_disk_high = disk_high;
+
+        // Temperature
+        bool temp_high = false;
+        for (const auto& z : snap.temperature().zones()) {
+            if (z.temp_celsius() > 80.0) {
+                temp_high = true;
+                if (!m_was_temp_high) {
+                    std::ostringstream oss;
+                    oss << "Temperature high on " << z.name() << ": " << z.temp_celsius() << " C";
+                    emit_alarm(m_bus, oss.str(), SEVERITY_WARNING);
+                }
+                break;
+            }
+        }
+        m_was_temp_high = temp_high;
+
+        // Zombie processes
+        bool zombies = snap.processes().zombie() > 0;
+        if (zombies && !m_was_zombies) {
+            std::ostringstream oss;
+            oss << "Zombie processes detected: " << snap.processes().zombie();
+            emit_alarm(m_bus, oss.str(), SEVERITY_ERROR);
+        }
+        m_was_zombies = zombies;
     }
 } // namespace chromelab

@@ -35,7 +35,13 @@ static void signal_handler(int sig) {
 namespace chromelab {
     LabDaemonImpl::LabDaemonImpl(const LabdConfig& config) :
         m_config(config),
-        m_collector(std::make_unique<CollectorOrchestrator>(config)) {}
+        m_collector(std::make_unique<CollectorOrchestrator>(config, &m_bus)),
+        m_store(10000) {
+
+        if (!config.events_dir.empty()) {
+            m_store.EnableDisk(config.events_dir);
+        }
+    }
 
     void LabDaemonImpl::Run(void) {
         m_running = true;
@@ -51,6 +57,17 @@ namespace chromelab {
         }
 
         std::cout << "labd listening on " << m_config.socket_path << "\n";
+
+        // Emit startup event
+        {
+            Event startup;
+            startup.set_category(EVENT_CATEGORY_SYSTEM);
+            startup.set_severity(SEVERITY_INFO);
+            startup.set_source("labd");
+            startup.set_message("Daemon started");
+            m_store.Append(&startup);
+            m_bus.Emit(startup);
+        }
 
         // Start telemetry collection
         m_collector->Start();
@@ -169,20 +186,35 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::ListEvents(grpc::ServerContext* ctx, const EventsRequest* req, EventsResponse* resp) {
+        auto events = m_store.Query(req->limit() > 0 ? req->limit() : 100, req->category_filter(), req->severity_filter(), req->since_ms());
+        for (auto& ev : events) {
+            *resp->add_events() = std::move(ev);
+        }
+
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::StreamEvents(grpc::ServerContext* ctx, const StreamRequest* req, grpc::ServerWriter<Event>* writer) {
-        while (g_running.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // Subscribe to all events and forward them to the gRPC writer
+        auto sub = m_bus.Subscribe(EVENT_CATEGORY_UNSPECIFIED, [&](const Event& event) {
+            Event copy = event;
+            writer->Write(copy);
+        });
+
+        // Block until client disconnects
+        while (g_running.load() && !ctx->IsCancelled()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::EmitEvent(grpc::ServerContext* ctx, const Event* req, EmitResponse* resp) {
-        resp->set_event_id(0);
+        Event event = *req;
+        int64_t id  = m_store.Append(&event);
+        m_bus.Emit(event);
 
+        resp->set_event_id(id);
         return grpc::Status::OK;
     }
 

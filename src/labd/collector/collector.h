@@ -32,6 +32,8 @@
 #include "labd/config.h"
 
 namespace chromelab {
+    class EventBus;
+
     // Base interface for all metric collectors
     class Collector {
     public:
@@ -43,7 +45,7 @@ namespace chromelab {
     // Owns all collectors, runs them on a timer thread, and provides the latest snapshot to gRPC handlers
     class CollectorOrchestrator {
     public:
-        explicit CollectorOrchestrator(const LabdConfig& config);
+        explicit CollectorOrchestrator(const LabdConfig& config, EventBus* bus = nullptr);
         ~CollectorOrchestrator(void);
 
         // Start the periodic collection thread.
@@ -60,6 +62,7 @@ namespace chromelab {
 
     private:
         void CollectAll(void);
+        void CheckThresholds(const MetricSnapshot& snap);
 
         std::vector<std::unique_ptr<Collector>> m_collectors;
         mutable std::mutex m_mutex;
@@ -67,6 +70,14 @@ namespace chromelab {
         std::thread m_thread;
         std::atomic<bool> m_running{false};
         int m_interval_ms;
+
+        // Threshold alarms
+        EventBus* m_bus = nullptr;
+        bool m_was_cpu_high     = false;
+        bool m_was_mem_high     = false;
+        bool m_was_disk_high    = false;
+        bool m_was_temp_high    = false;
+        bool m_was_zombies      = false;
     };
 } // namespace chromelab
 
