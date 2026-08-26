@@ -34,9 +34,10 @@ static void signal_handler(int sig) {
 
 namespace chromelab {
     LabDaemonImpl::LabDaemonImpl(const LabdConfig& config) :
-        m_config(config) {}
+        m_config(config),
+        m_collector(std::make_unique<CollectorOrchestrator>(config)) {}
 
-    void LabDaemonImpl::Run() {
+    void LabDaemonImpl::Run(void) {
         m_running = true;
 
         grpc::ServerBuilder builder;
@@ -51,6 +52,9 @@ namespace chromelab {
 
         std::cout << "labd listening on " << m_config.socket_path << "\n";
 
+        // Start telemetry collection
+        m_collector->Start();
+
         while (g_running.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -58,7 +62,12 @@ namespace chromelab {
         Stop();
     }
 
-    void LabDaemonImpl::Stop() {
+    void LabDaemonImpl::Stop(void) {
+        // Stop telemetry collection first
+        if (m_collector) {
+            m_collector->Stop();
+        }
+
         if (m_server) {
             std::cout << "labd shutting down...\n";
             m_server->Shutdown();
@@ -69,9 +78,10 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::GetStatus(grpc::ServerContext* ctx, const Empty* req, StatusResponse* resp) {
+        auto snap = m_collector->GetSnapshot();
         resp->set_version("0.1.0");
         resp->set_hostname("chromelab");
-        resp->set_uptime_seconds(0);
+        resp->set_uptime_seconds(snap.uptime().uptime_seconds());
         resp->set_ai_loaded(false);
         resp->set_wireguard_active(false);
         resp->set_services_running(0);
@@ -80,15 +90,44 @@ namespace chromelab {
         return grpc::Status::OK;
     }
 
+    static std::string read_first_line(const std::string& path) {
+        std::ifstream f(path);
+        std::string line;
+        if (f.is_open()) std::getline(f, line);
+        return line;
+    }
+
     grpc::Status LabDaemonImpl::GetSystemInfo(grpc::ServerContext* ctx, const Empty* req, SystemInfo* resp) {
         resp->set_hostname("chromelab");
-        resp->set_kernel_version("unknown");
-        resp->set_alpine_version("unknown");
+        resp->set_kernel_version(read_first_line("/proc/version"));
+
+        // Read CPU info
+        std::ifstream cpuinfo("/proc/cpuinfo");
+        int core_count = 0;
+        std::string cpu_model;
+        std::string line;
+        while (std::getline(cpuinfo, line)) {
+            if (line.compare(0, 8, "model name") == 0) {
+                auto pos = line.find(':');
+                if (pos != std::string::npos) cpu_model = line.substr(pos + 2);
+            }
+            if (line.compare(0, 9, "processor") == 0) core_count++;
+        }
+        resp->set_cpu_model(cpu_model);
+        resp->set_cpu_cores(core_count);
         resp->set_arch("x86_64");
-        resp->set_total_ram_bytes(0);
+
+        // Read memory from latest snapshot
+        auto snap = m_collector->GetSnapshot();
+        resp->set_total_ram_bytes(snap.memory().total_bytes());
         resp->set_total_disk_bytes(0);
-        resp->set_cpu_cores(0);
-        resp->set_cpu_model("unknown");
+
+        // Disk total from filesystems
+        int64_t total_disk = 0;
+        for (const auto& fs : snap.disk().filesystems()) {
+            total_disk += fs.total_bytes();
+        }
+        resp->set_total_disk_bytes(total_disk);
 
         return grpc::Status::OK;
     }
@@ -110,8 +149,7 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::GetMetrics(grpc::ServerContext* ctx, const MetricsRequest* req, MetricSnapshot* resp) {
-        resp->set_timestamp_ms(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-
+        *resp = m_collector->GetSnapshot();
         return grpc::Status::OK;
     }
 
@@ -119,8 +157,7 @@ namespace chromelab {
         int interval = req->interval_ms() > 0 ? req->interval_ms() : m_config.metrics_interval_ms;
 
         while (g_running.load()) {
-            MetricSnapshot snap;
-            snap.set_timestamp_ms(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+            MetricSnapshot snap = m_collector->GetSnapshot();
             if (!writer->Write(snap)) {
                 break;
             }

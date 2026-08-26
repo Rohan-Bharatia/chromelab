@@ -87,6 +87,15 @@ add_executable(labd
     src/labd/main.cc
     src/labd/server.cc
     src/labd/config.cc
+    src/labd/collector/collector.cc
+    src/labd/collector/cpu.cc
+    src/labd/collector/memory.cc
+    src/labd/collector/disk.cc
+    src/labd/collector/network.cc
+    src/labd/collector/temperature.cc
+    src/labd/collector/load.cc
+    src/labd/collector/processes.cc
+    src/labd/collector/uptime.cc
 )
 target_include_directories(labd PRIVATE src)
 target_link_libraries(labd PRIVATE

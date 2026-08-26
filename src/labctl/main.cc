@@ -105,6 +105,70 @@ static int cmd_info(const std::shared_ptr<grpc::Channel>& channel) {
     return 0;
 }
 
+static void print_snapshot(const chromelab::MetricSnapshot& snap) {
+    // CPU
+    const auto& cpu = snap.cpu();
+    std::cout << "CPU:       " << cpu.overall_percent() << "% (" << cpu.cores_size() << " cores)\n";
+    for (int i = 0; i < cpu.cores_size(); ++i) {
+        const auto& c = cpu.cores(i);
+        std::cout << "  core " << c.core_id() << ":  " << c.percent() << "%\n";
+    }
+
+    // Memory
+    const auto& mem = snap.memory();
+    if (mem.total_bytes() > 0) {
+        std::cout << "Memory:    " << mem.used_bytes() / (1024 * 1024) << " / "
+                  << mem.total_bytes() / (1024 * 1024) << " MB (" << mem.percent() << "%)\n";
+        if (mem.swap_total_bytes() > 0) {
+            std::cout << "Swap:      " << mem.swap_used_bytes() / (1024 * 1024) << " / "
+                      << mem.swap_total_bytes() / (1024 * 1024) << " MB (" << mem.swap_percent() << "%)\n";
+        }
+    }
+
+    // Load
+    const auto& load = snap.load();
+    std::cout << "Load:      " << load.load_1m() << " " << load.load_5m() << " " << load.load_15m() << "\n";
+
+    // Disk
+    const auto& disk = snap.disk();
+    for (int i = 0; i < disk.filesystems_size(); ++i) {
+        const auto& fs = disk.filesystems(i);
+        std::cout << "Disk " << fs.mount_point() << ":  "
+                  << fs.used_bytes() / (1024 * 1024 * 1024) << " / "
+                  << fs.total_bytes() / (1024 * 1024 * 1024) << " GB (" << fs.percent() << "%)\n";
+    }
+
+    // Network
+    const auto& net = snap.network();
+    for (int i = 0; i < net.interfaces_size(); ++i) {
+        const auto& iface = net.interfaces(i);
+        std::cout << "Net " << iface.name() << ":   rx="
+                  << iface.rx_bytes() / 1024 << "KB tx="
+                  << iface.tx_bytes() / 1024 << "KB"
+                  << " pkts=" << iface.rx_packets() << "/" << iface.tx_packets() << "\n";
+    }
+    std::cout << "Connections: TCP=" << net.tcp_established() << " est, "
+              << net.tcp_time_wait() << " tw | UDP=" << net.udp_connections() << "\n";
+
+    // Temperature
+    const auto& temp = snap.temperature();
+    for (int i = 0; i < temp.zones_size(); ++i) {
+        const auto& z = temp.zones(i);
+        std::cout << "Temp " << z.name() << ":    " << z.temp_celsius() << " C (" << z.type() << ")\n";
+    }
+
+    // Processes
+    const auto& procs = snap.processes();
+    std::cout << "Procs:     " << procs.total() << " total, "
+              << procs.running() << " run, "
+              << procs.sleeping() << " sleep, "
+              << procs.zombie() << " zombie\n";
+
+    // Uptime
+    const auto& up = snap.uptime();
+    std::cout << "Uptime:    " << up.uptime_human() << "\n";
+}
+
 static int cmd_metrics(const std::shared_ptr<grpc::Channel>& channel, bool watch) {
     auto stub = chromelab::LabDaemon::NewStub(channel);
 
@@ -116,7 +180,11 @@ static int cmd_metrics(const std::shared_ptr<grpc::Channel>& channel, bool watch
 
         chromelab::MetricSnapshot snap;
         while (reader->Read(&snap)) {
-            std::cout << "\r[" << snap.timestamp_ms() << "] metrics received" << std::flush;
+            // Clear screen
+            std::cout << "\033[2J\033[H";
+            std::cout << "=== chromelab metrics (live) ===\n\n";
+            print_snapshot(snap);
+            std::cout << std::flush;
         }
 
         return 0;
@@ -132,7 +200,8 @@ static int cmd_metrics(const std::shared_ptr<grpc::Channel>& channel, bool watch
         return 1;
     }
 
-    std::cout << "Metrics snapshot at " << resp.timestamp_ms() << "\n";
+    std::cout << "=== chromelab metrics ===\n\n";
+    print_snapshot(resp);
     return 0;
 }
 

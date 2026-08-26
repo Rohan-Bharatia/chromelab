@@ -163,6 +163,7 @@
 #ifdef __linux__
     #include <signal.h>
     #include <unistd.h>
+    #include <sys/statvfs.h>
 #else // (NOT) __linux__
     #error "Chromelab only works on Linux-based operating systems!"
 #endif // __linux__

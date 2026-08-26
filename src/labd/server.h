@@ -32,6 +32,7 @@
 #include "pch.h"
 
 #include "labd/config.h"
+#include "labd/collector/collector.h"
 
 namespace chromelab {
 
@@ -39,10 +40,10 @@ namespace chromelab {
         public LabDaemon::Service {
     public:
         explicit LabDaemonImpl(const LabdConfig& config);
-        ~LabDaemonImpl() override = default;
+        ~LabDaemonImpl(void) override = default;
 
-        void Run();
-        void Stop();
+        void Run(void);
+        void Stop(void);
 
         // System
         grpc::Status GetStatus(grpc::ServerContext* ctx, const Empty* req, StatusResponse* resp) override;
@@ -89,6 +90,7 @@ namespace chromelab {
     private:
         LabdConfig m_config;
         std::unique_ptr<grpc::Server> m_server;
+        std::unique_ptr<CollectorOrchestrator> m_collector;
         std::atomic<bool> m_running{false};
     };
 } // namespace chromelab
