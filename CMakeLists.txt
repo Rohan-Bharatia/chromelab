@@ -13,6 +13,8 @@ use_runtime("static")
 find_package(gRPC REQUIRED)
 find_package(Threads REQUIRED)
 
+add_subdirectory(third_party/toml++ EXCLUDE_FROM_ALL)
+
 find_program(PROTOC_EXECUTABLE protoc REQUIRED)
 find_program(GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin REQUIRED)
 
@@ -84,6 +86,7 @@ target_link_libraries(chromelab_proto PUBLIC
 add_executable(labd
     src/labd/main.cc
     src/labd/server.cc
+    src/labd/config.cc
 )
 target_include_directories(labd PRIVATE src)
 target_link_libraries(labd PRIVATE
@@ -91,6 +94,7 @@ target_link_libraries(labd PRIVATE
     gRPC::grpc++
     protobuf::libprotobuf
     Threads::Threads
+    tomlplusplus::tomlplusplus
 )
 target_precompile_headers(labd PRIVATE src/pch.h)
 
@@ -104,6 +108,7 @@ target_link_libraries(labctl PRIVATE
     gRPC::grpc++
     protobuf::libprotobuf
     Threads::Threads
+    tomlplusplus::tomlplusplus
 )
 target_precompile_headers(labctl PRIVATE src/pch.h)
 

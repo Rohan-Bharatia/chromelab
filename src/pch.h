@@ -172,6 +172,7 @@
     #define _CRT_SECURE_NO_WARNINGS
 #endif // _CRT_SECURE_NO_WARNINGS
 #include <grpcpp/grpcpp.h>
+#include <toml++/toml.hpp>
 
 // Lab library headers
 #include "labd.grpc.pb.h"

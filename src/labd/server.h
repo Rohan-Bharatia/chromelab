@@ -31,13 +31,9 @@
 
 #include "pch.h"
 
+#include "labd/config.h"
+
 namespace chromelab {
-    struct LabdConfig {
-        std::string socket_path = "/run/chromelab/labd.sock";
-        std::string web_dir     = "/usr/share/chromelab/web";
-        int metrics_interval_ms = 2000;
-        std::string log_level   = "info";
-    };
 
     class LabDaemonImpl final :
         public LabDaemon::Service {
