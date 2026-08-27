@@ -87,13 +87,9 @@ install -d -o root -g root -m 0755 "${WEB_DIR}"
 install -d -o lab -g lab -m 0755 "${BUILD_DIR}"
 
 echo "Cloning repository..."
-if [ -d "${REPO_DIR}/.git" ]; then
-    echo "Repository already exists; updating..."
-    git -C "${REPO_DIR}" pull --ff-only
-else
-    echo "Cloning repository..."
-    git clone "${REPO_URL}" "${REPO_DIR}"
-fi
+echo "Cloning repository..."
+rm -rf "${REPO_URL}"
+git clone "${REPO_URL}" "${REPO_DIR}"
 chown -R lab:lab "${REPO_DIR}"
 git -C "${REPO_DIR}" submodule update --init --recursive
 
