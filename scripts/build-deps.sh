@@ -16,7 +16,7 @@ ALPINE_PKGS=(
     grpc-plugins
     ncurses-dev
     libmicrohttpd-dev
-    llama-cpp-dev
+    llama.cpp
     curl
     git
 )
