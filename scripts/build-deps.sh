@@ -16,7 +16,6 @@ ALPINE_PKGS=(
     grpc-plugins
     ncurses-dev
     libmicrohttpd-dev
-    llama.cpp
     curl
     git
 )
@@ -37,7 +36,7 @@ install_alpine() {
 install_nix() {
     echo "For NixOS, use a nix-shell or flake devShell."
     echo "Example:"
-    echo "  nix-shell -p cmake gnumake gcc protobuf openssl grpc libmicrohttpd ncurses llama-cpp"
+    echo "  nix-shell -p cmake gnumake gcc protobuf openssl grpc libmicrohttpd ncurses"
     if [ "$ACTION" = "remove" ]; then
         echo "Nothing to remove for Nix (dependencies are isolated in the store)."
     fi
@@ -46,9 +45,9 @@ install_nix() {
 install_arch() {
     echo "Installing build dependencies on Arch Linux..."
     if [ "$ACTION" = "remove" ]; then
-        pacman -Rns cmake base-devel protobuf grpc libmicrohttpd ncurses llama-cpp 2>/dev/null || true
+        pacman -Rns cmake base-devel protobuf grpc libmicrohttpd ncurses 2>/dev/null || true
     else
-        pacman -S --needed cmake base-devel protobuf grpc libmicrohttpd ncurses llama-cpp
+        pacman -S --needed cmake base-devel protobuf grpc libmicrohttpd ncurses
     fi
 }
 
@@ -60,8 +59,6 @@ install_debian() {
         apt update
         apt install -y cmake g++ protobuf-compiler libprotobuf-dev libgrpc++-dev libmicrohttpd-dev libncurses-dev
     fi
-
-    # TODO: Install llama-cpp for Debian
 }
 
 if [ -f /etc/alpine-release ]; then
