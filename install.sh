@@ -1,93 +1,139 @@
-#!/bin/sh
-# chromelab installer for Alpine Linux (Acer Chromebook Spin 11)
-# Run as root: sh install.sh
-
 set -e
 
-PREFIX="/usr/local"
-CONFDIR="/etc/chromelab"
-DATADIR="/var/lib/chromelab"
-LOGDIR="/var/log/chromelab"
-RUNDIR="/run/chromelab"
-WEBDIR="${PREFIX}/share/chromelab/web"
-BINDIR="${PREFIX}/bin"
+echo ""
+echo "=== CHROMELAB INSTALLER ==="
+echo ""
 
-echo "=== chromelab installer ==="
-
-# Check root
 if [ "$(id -u)" -ne 0 ]; then
     echo "error: must be run as root"
     exit 1
 fi
 
-# Detect architecture
+HOME_DIR="/home/lab"
+REPO_DIR="${HOME_DIR}/chromelab"
+BUILD_DIR="${REPO_DIR}/build"
+PREFIX="/usr/local"
+CONF_DIR="/etc/chromelab"
+DATA_DIR="/var/lib/chromelab"
+LOG_DIR="/var/log/chromelab"
+RUN_DIR="/run/chromelab"
+WEB_DIR="${PREFIX}/share/chromelab/web"
+BIN_DIR="${PREFIX}/bin"
+
+APK_REPOS_FILE="/etc/apk/repositories"
+DOAS_CONF_FILE="/etc/doas.conf"
+XINITRC_FILE="${HOME_DIR}/.xinitrc"
+
+REPO_URL="https://github.com/Rohan-Bharatia/chromelab.git"
+
+echo "Installing base..."
+apk update
+
+if grep -q '^#.*\/community$' "${APK_REPOS_FILE}"; then
+    sed -i 's|^#\(.*\/community\)$|\1|' "${APK_REPOS_FILE}"
+fi
+apk update
+
+setup-xorg-base
+
+if ! id lab >/dev/null 2>&1; then
+    adduser -D lab
+fi
+if ! groups lab | grep -qw wheel; then
+    addgroup lab wheel
+fi
+install -d -o lab -g lab -m 0755 "${HOME_DIR}"
+
+apk add doas bash fastfetch
+
+chsh -s "$(command -v bash)" lab
+
+cat "${DOAS_CONF_FILE}" <<"EOF"
+permit persist :wheel
+EOF
+chmod 0400 "${DOAS_CONF_FILE}"
+chown root:root "${DOAS_CONF_FILE}"
+
+cat >"${XINITRC_FILE}" <<'EOF'
+xset r rate 200 35 &
+xrandr -s 1920x1080
+EOF
+chmod 0644 "${XINITRC_FILE}"
+chown lab:lab "${XINITRC_FILE}"
+
+echo "Installing dependencies..."
+apk add build-base \
+    cmake \
+    protobuf-dev \
+    protobuf \
+    grpc-dev \
+    grpc \
+    grpc-plugins \
+    ncurses-dev \
+    libmicrohttpd-dev \
+    wireguard-tools \
+    git
+
 ARCH=$(uname -m)
 echo "Architecture: ${ARCH}"
 
-# Check for required binaries
-for bin in labd labctl; do
-    if [ ! -f "./build/${bin}" ]; then
-        echo "error: ./build/${bin} not found"
-        echo "Run 'cmake --build build' first."
-        exit 1
-    fi
-done
-
-# Create directory structure
 echo "Creating directories..."
-install -d -o root -g root -m 0755 "${BINDIR}"
-install -d -o root -g root -m 0755 "${CONFDIR}"
-install -d -o root -g root -m 0755 "${DATADIR}/models"
-install -d -o root -g root -m 0755 "${DATADIR}/events"
-install -d -o root -g root -m 0755 "${LOGDIR}"
-install -d -o root -g root -m 0755 "${RUNDIR}"
-install -d -o root -g root -m 0755 "${WEBDIR}"
+install -d -o root -g root -m 0755 "${BIN_DIR}"
+install -d -o root -g root -m 0755 "${CONF_DIR}"
+install -d -o root -g root -m 0755 "${DATA_DIR}/models"
+install -d -o root -g root -m 0755 "${DATA_DIR}/events"
+install -d -o root -g root -m 0755 "${LOG_DIR}"
+install -d -o root -g root -m 0755 "${RUN_DIR}"
+install -d -o root -g root -m 0755 "${WEB_DIR}"
+install -d -o lab -g lab -m 0755 "${BUILD_DIR}"
 
-# Install binaries
-echo "Installing binaries..."
-install -m 0755 ./build/labd "${BINDIR}/labd"
-install -m 0755 ./build/labctl "${BINDIR}/labctl"
-
-# Install config (don't overwrite existing)
-if [ ! -f "${CONFDIR}/labd.conf" ]; then
-    echo "Installing config..."
-    install -m 0644 ./etc/labd.conf "${CONFDIR}/labd.conf"
+echo "Cloning repository..."
+if [ -d "${REPO_DIR}/.git" ]; then
+    echo "Repository already exists; updating..."
+    git -C "${REPO_DIR}" pull --ff-only
 else
-    echo "Config exists, skipping (etc/labd.conf -> ${CONFDIR}/labd.conf)"
+    echo "Cloning repository..."
+    git clone "${REPO_URL}" "${REPO_DIR}"
+fi
+chown -R lab:lab "${REPO_DIR}"
+git -C "${REPO_DIR}" submodule update --init --recursive
+
+echo "Building..."
+cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE="Release"
+cmake --build "${BUILD_DIR}" -j"$(nproc 2>/dev/null || echo 4)"
+
+echo "Installing binaries..."
+install -m 0755 "${BUILD_DIR}/labd" "${BIN_DIR}/labd"
+install -m 0755 "${BUILD_DIR}/labctl" "${BIN_DIR}/labctl"
+
+if [ ! -f "${CONF_DIR}/labd.conf" ]; then
+    echo "Installing config..."
+    install -m 0644 "${REPO_DIR}/etc/labd.conf" "${CONF_DIR}/labd.conf"
+else
+    echo "Config exists, skipping (etc/labd.conf -> ${CONF_DIR}/labd.conf)"
 fi
 
-# Install web dashboard
 echo "Installing web dashboard..."
-cp -r ./web/* "${WEBDIR}/"
+cp -r "${REPO_DIR}/web/." "${WEB_DIR}/"
 
-# Install OpenRC init script
-if [ -d /etc/init.d ]; then
-    echo "Installing init script..."
-    install -m 0755 ./etc/init.d/labd /etc/init.d/labd
-    echo "  Enable on boot:  rc-update add labd default"
-    echo "  Start now:       rc-service labd start"
-fi
+echo "Installing init script..."
+install -m 0755 "${REPO_DIR}/etc/init.d/labd" /etc/init.d/labd
 
-# Install WireGuard if not present
-if ! command -v wg >/dev/null 2>&1; then
-    echo "Installing WireGuard..."
-    if command -v apk >/dev/null 2>&1; then
-        apk add wireguard-tools
-    else
-        echo "  warning: could not install wireguard-tools (not apk-based?)"
-    fi
-fi
+echo "Enabling daemon..."
+rc-update add labd default
+
+echo "Starting daemon..."
+rc-service labd start
 
 echo ""
-echo "=== installation complete ==="
+echo "=== INSTALLATION COMPLETE ==="
 echo ""
+
 echo "Quick start:"
-echo "  1. Edit config:    vi ${CONFDIR}/labd.conf"
-echo "  2. Start daemon:   labd -c ${CONFDIR}/labd.conf"
+echo "  1. Edit config:    vi ${CONF_DIR}/labd.conf"
+echo "  2. Check daemon:   rc-service labd status"
 echo "  3. Open dashboard: http://$(hostname -i | awk '{print $1}'):8080"
 echo "  4. CLI usage:      labctl status"
 echo ""
-echo "Enable as a service:"
-echo "  rc-update add labd default"
-echo "  rc-service labd start"
+echo "Reboot when ready."
 echo ""

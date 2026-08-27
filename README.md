@@ -4,7 +4,7 @@ A documented process of turning my old [Acer ChromeBook Spin 11](https://www.ama
 
 ## 🧰 Requirements
 
-1. A functional laptop
+1. A functional laptop (*with working Ethernet or WiFi*)
 2. A bootable USB drive
 
 > [!NOTE]
