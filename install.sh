@@ -44,9 +44,7 @@ if ! groups lab | grep -qw wheel; then
 fi
 install -d -o lab -g lab -m 0755 "${HOME_DIR}"
 
-apk add doas bash fastfetch
-
-chsh -s "$(command -v bash)" lab
+apk add doas fastfetch
 
 cat "${DOAS_CONF_FILE}" <<"EOF"
 permit persist :wheel
@@ -72,6 +70,7 @@ apk add build-base \
     ncurses-dev \
     libmicrohttpd-dev \
     wireguard-tools \
+    tailscale \
     git
 
 ARCH=$(uname -m)

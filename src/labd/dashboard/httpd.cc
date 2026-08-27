@@ -72,6 +72,10 @@ namespace chromelab {
         m_wg_active = active;
     }
 
+    void HttpServer::SetTailscaleActive(bool active) {
+        m_ts_active = active;
+    }
+
     MHD_Result HttpServer::RequestHandler(void* cls, struct MHD_Connection* connection, const char* url, const char* method,
                                           const char* version, const char* upload_data, size_t* upload_data_size, void** con_cls) {
         auto* self = static_cast<HttpServer*>(cls);
@@ -124,6 +128,7 @@ namespace chromelab {
         json            += ",\"services_running\":" + std::to_string(running);
         json            += ",\"services_total\":" + std::to_string(services.size());
         json            += ",\"wireguard_active\":" + std::string(m_wg_active ? "true" : "false");
+        json            += ",\"tailscale_active\":" + std::string(m_ts_active ? "true" : "false");
         json            += "}";
 
         return SendJson(connection, 200, json);

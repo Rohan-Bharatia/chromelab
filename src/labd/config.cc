@@ -109,6 +109,14 @@ namespace chromelab {
                 }
             }
 
+            // Tailscale
+            if (auto node = tbl.get("tailscale")) {
+                if (auto* ts = node->as_table()) {
+                    out.ts_enabled = GetOr<bool>(*ts, "enabled", out.ts_enabled);
+                    out.ts_authkey = GetStr(*ts, "authkey", out.ts_authkey);
+                }
+            }
+
             // DNS
             if (auto node = tbl.get("dns")) {
                 if (auto* dns = node->as_table()) {
@@ -174,6 +182,9 @@ namespace chromelab {
            << "  listen_port = " << cfg.wg_listen_port << "\n"
            << "  cidr        = \"" << cfg.wg_cidr << "\"\n"
            << "  dns         = \"" << cfg.wg_dns << "\"\n"
+           << "\n"
+           << "[tailscale]\n"
+           << "  enabled = " << (cfg.ts_enabled ? "true" : "false") << "\n"
            << "\n"
            << "[dns]\n"
            << "  enabled = " << (cfg.dns_enabled ? "true" : "false") << "\n"

@@ -47,3 +47,39 @@ message RemovePeerRequest {
 message PeersList {
     repeated PeerInfo peers = 1;
 }
+
+// --- Tailscale ---
+
+enum TSState {
+    TS_STATE_UNSPECIFIED = 0;
+    TS_STATE_DOWN        = 1;
+    TS_STATE_UP          = 2;
+    TS_STATE_STARTING    = 3;
+}
+
+message TSStatus {
+    TSState state         = 1;
+    string backend_state  = 2;
+    string hostname       = 3;
+    string tailscale_ip   = 4;
+    string dns_name       = 5;
+    string machine_id     = 6;
+    bool auth_required    = 7;
+    string self_online    = 8;
+    repeated TSPeer peers = 9;
+    string error          = 10;
+}
+
+message TSPeer {
+    string name         = 1;
+    string tailscale_ip = 2;
+    string os           = 3;
+    bool online         = 4;
+    bool self           = 5;
+}
+
+message TSRequest {}
+
+message TSLoginRequest {
+    string authkey = 1;
+}

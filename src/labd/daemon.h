@@ -39,6 +39,7 @@
 #include "labd/dashboard/httpd.h"
 #include "labd/ai/engine.h"
 #include "labd/remote/wireguard.h"
+#include "labd/remote/tailscale.h"
 #include "labd/dns/server.h"
 
 namespace chromelab {
@@ -93,6 +94,12 @@ namespace chromelab {
         grpc::Status RemovePeer(grpc::ServerContext* ctx, const RemovePeerRequest* req, WGStatus* resp) override;
         grpc::Status ListPeers(grpc::ServerContext* ctx, const Empty* req, PeersList* resp) override;
 
+        // Tailscale
+        grpc::Status TailscaleStatus(grpc::ServerContext* ctx, const TSRequest* req, TSStatus* resp) override;
+        grpc::Status TailscaleUp(grpc::ServerContext* ctx, const TSLoginRequest* req, TSStatus* resp) override;
+        grpc::Status TailscaleDown(grpc::ServerContext* ctx, const Empty* req, TSStatus* resp) override;
+        grpc::Status TailscaleIP(grpc::ServerContext* ctx, const Empty* req, TSStatus* resp) override;
+
     private:
         LabdConfig m_config;
         std::unique_ptr<grpc::Server> m_server;
@@ -101,6 +108,7 @@ namespace chromelab {
         std::unique_ptr<HttpServer> m_httpd;
         std::unique_ptr<AiEngine> m_ai;
         std::unique_ptr<WireGuardManager> m_wg;
+        std::unique_ptr<TailscaleManager> m_ts;
         std::unique_ptr<DnsServer> m_dns;
         EventBus m_bus;
         EventStore m_store;

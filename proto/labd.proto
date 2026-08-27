@@ -17,8 +17,9 @@ message StatusResponse {
     int64 uptime_seconds   = 3;
     bool ai_loaded         = 4;
     bool wireguard_active  = 5;
-    int32 services_running = 6;
-    int32 services_total   = 7;
+    bool tailscale_active  = 6;
+    int32 services_running = 7;
+    int32 services_total   = 8;
 }
 
 message SystemInfo {
@@ -90,4 +91,10 @@ service LabDaemon {
     rpc AddPeer(AddPeerRequest)       returns (WGStatus);
     rpc RemovePeer(RemovePeerRequest) returns (WGStatus);
     rpc ListPeers(Empty)              returns (PeersList);
+
+    // Tailscale
+    rpc TailscaleStatus(TSRequest)  returns (TSStatus);
+    rpc TailscaleUp(TSLoginRequest) returns (TSStatus);
+    rpc TailscaleDown(Empty)        returns (TSStatus);
+    rpc TailscaleIP(Empty)          returns (TSStatus);
 }

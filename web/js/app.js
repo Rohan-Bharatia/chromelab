@@ -221,11 +221,16 @@ async function PollStatus() {
         document.getElementById('svc-count').textContent = status.services_running + '/' + status.services_total + ' services';
         document.getElementById('uptime').textContent = 'up ' + FmtUptime(status.uptime_seconds);
 
-        // WireGuard state from status
+        // WireGuard + Tailscale state from status
         let wgHtml = '';
         const wgUp = status.wireguard_active;
         wgHtml += `<div class="detail-row"><span class="label">State</span><span class="value" style="color:var(--${wgUp ? 'green' : 'red'})">${wgUp ? 'UP' : 'DOWN'}</span></div>`;
         document.getElementById('wg-detail').innerHTML = wgHtml;
+
+        let tsHtml = '';
+        const tsUp = status.tailscale_active;
+        tsHtml += `<div class="detail-row"><span class="label">State</span><span class="value" style="color:var(--${tsUp ? 'green' : 'red'})">${tsUp ? 'UP' : 'DOWN'}</span></div>`;
+        document.getElementById('ts-detail').innerHTML = tsHtml;
     } catch (e) { }
 }
 

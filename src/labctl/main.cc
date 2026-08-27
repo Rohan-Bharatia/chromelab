@@ -56,6 +56,10 @@ static void usage(const char* prog) {
               << "  wg add-peer         Add a peer (interactive)\n"
               << "  wg remove-peer <pk> Remove a peer by public key\n"
               << "  wg genkey           Generate a WireGuard keypair\n"
+              << "  ts status           Tailscale status\n"
+              << "  ts up [authkey]     Connect to Tailscale (optional authkey)\n"
+              << "  ts down             Disconnect from Tailscale\n"
+              << "  ts ip               Show Tailscale IP address\n"
               << "  config validate     Validate configuration\n"
               << "  tui                 Live terminal dashboard\n"
               << "\nOptions:\n"
@@ -85,6 +89,7 @@ static int cmd_status(const std::shared_ptr<grpc::Channel>& channel) {
               << "  Uptime:       " << resp.uptime_seconds() << "s\n"
               << "  AI loaded:    " << (resp.ai_loaded() ? "yes" : "no") << "\n"
               << "  WireGuard:    " << (resp.wireguard_active() ? "active" : "inactive") << "\n"
+              << "  Tailscale:    " << (resp.tailscale_active() ? "active" : "inactive") << "\n"
               << "  Services:     " << resp.services_running() << "/" << resp.services_total() << " running\n";
     return 0;
 }
@@ -781,6 +786,130 @@ static int cmd_wg(const std::shared_ptr<grpc::Channel>& channel, const std::vect
     return 1;
 }
 
+static const char* ts_state_str(chromelab::TSState s) {
+    switch (s) {
+        case chromelab::TS_STATE_UP:
+            return "up";
+        case chromelab::TS_STATE_DOWN:
+            return "down";
+        case chromelab::TS_STATE_STARTING:
+            return "starting";
+        default:
+            return "unknown";
+    }
+}
+
+static int cmd_ts(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
+    if (start >= static_cast<int>(args.size())) {
+        std::cerr << "Usage: labctl ts <status|up|down|ip> [authkey]\n";
+        return 1;
+    }
+
+    auto stub          = chromelab::LabDaemon::NewStub(channel);
+    const auto& action = args[start];
+
+    if (action == "status") {
+        grpc::ClientContext ctx;
+        chromelab::TSRequest req;
+        chromelab::TSStatus resp;
+        auto s = stub->TailscaleStatus(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Tailscale: " << ts_state_str(resp.state()) << "\n";
+        if (!resp.backend_state().empty()) {
+            std::cout << "  Backend:   " << resp.backend_state() << "\n";
+        } if (!resp.hostname().empty()) {
+            std::cout << "  Hostname:  " << resp.hostname() << "\n";
+        } if (!resp.tailscale_ip().empty()) {
+            std::cout << "  IP:        " << resp.tailscale_ip() << "\n";
+        } if (!resp.dns_name().empty()) {
+            std::cout << "  DNS Name:  " << resp.dns_name() << "\n";
+        } if (resp.auth_required()) {
+            std::cout << "  Auth:      required - run 'labctl ts up <authkey>'\n";
+        } if (!resp.error().empty()) {
+            std::cerr << "  Error: " << resp.error() << "\n";
+        }
+
+        return 0;
+    }
+
+    if (action == "up") {
+        grpc::ClientContext ctx;
+        chromelab::TSLoginRequest req;
+        if (start + 1 < static_cast<int>(args.size())) {
+            req.set_authkey(args[start + 1]);
+        }
+
+        chromelab::TSStatus resp;
+        auto s = stub->TailscaleUp(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Tailscale: " << ts_state_str(resp.state());
+        if (resp.auth_required()) {
+            std::cout << " - authentication required (use an authkey)";
+        }
+
+        std::cout << "\n";
+        if (!resp.error().empty()) {
+            std::cerr << "  Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        return 0;
+    }
+
+    if (action == "down") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::TSStatus resp;
+        auto s = stub->TailscaleDown(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "Tailscale: " << ts_state_str(resp.state()) << "\n";
+        if (!resp.error().empty()) {
+            std::cerr << "  Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        return 0;
+    }
+
+    if (action == "ip") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::TSStatus resp;
+        auto s = stub->TailscaleIP(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (!resp.tailscale_ip().empty()) {
+            std::cout << resp.tailscale_ip() << "\n";
+        } else {
+            std::cerr << "No IP assigned (is Tailscale up?)\n";
+            if (!resp.error().empty()) {
+                std::cerr << "  Error: " << resp.error() << "\n";
+            }
+            return 1;
+        }
+
+        return 0;
+    }
+
+    std::cerr << "Unknown Tailscale action: " << action << "\n";
+    return 1;
+}
+
 static int cmd_config(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
     if (start >= static_cast<int>(args.size())) {
         std::cerr << "Usage: labctl config <validate> [file]\n";
@@ -873,6 +1002,8 @@ int main(int argc, char* argv[]) {
         return cmd_svc(channel, args, 1);
     } if (cmd == "wg") {
         return cmd_wg(channel, args, 1);
+    } if (cmd == "ts") {
+        return cmd_ts(channel, args, 1);
     } if (cmd == "ai") {
         return cmd_ai(channel, args, 1);
     } if (cmd == "config") {

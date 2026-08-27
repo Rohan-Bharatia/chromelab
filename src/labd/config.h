@@ -59,6 +59,10 @@ namespace chromelab {
         std::string wg_cidr      = "10.0.0.0/24";
         std::string wg_dns       = "1.1.1.1";
 
+        // Tailscale
+        bool ts_enabled        = true;
+        std::string ts_authkey = "";
+
         // DNS
         bool dns_enabled       = false;
         std::string dns_domain = "lab";

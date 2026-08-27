@@ -54,6 +54,10 @@ namespace chromelab {
             m_wg = std::make_unique<WireGuardManager>(config.wg_interface, config.wg_listen_port, config.wg_cidr, config.wg_dns, &m_bus);
         }
 
+        if (config.ts_enabled) {
+            m_ts = std::make_unique<TailscaleManager>(&m_bus);
+        }
+
         if (config.dns_enabled) {
             m_dns = std::make_unique<DnsServer>(config.dns_domain, &m_bus);
         }
@@ -110,6 +114,9 @@ namespace chromelab {
             if (m_httpd && m_wg) {
                 m_httpd->SetWireGuardActive(m_wg->GetStatus().state() == WG_STATE_UP);
             }
+            if (m_httpd && m_ts) {
+                m_httpd->SetTailscaleActive(m_ts->IsUp());
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -152,6 +159,7 @@ namespace chromelab {
         resp->set_uptime_seconds(snap.uptime().uptime_seconds());
         resp->set_ai_loaded(m_ai && m_ai->GetStatus().status() == MODEL_STATUS_READY);
         resp->set_wireguard_active(m_wg && m_wg->GetStatus().state() == WG_STATE_UP);
+        resp->set_tailscale_active(m_ts && m_ts->IsUp());
         resp->set_services_running(running);
         resp->set_services_total(static_cast<int32_t>(services.size()));
 
@@ -597,6 +605,58 @@ namespace chromelab {
         for (auto& p : peers) {
             *resp->add_peers() = std::move(p);
         }
+
+        return grpc::Status::OK;
+    }
+
+    grpc::Status LabDaemonImpl::TailscaleStatus(grpc::ServerContext* ctx, const TSRequest* req, TSStatus* resp) {
+        if (!m_ts) {
+            resp->set_state(TS_STATE_DOWN);
+            resp->set_error("Tailscale not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_ts->GetStatus();
+
+        return grpc::Status::OK;
+    }
+
+    grpc::Status LabDaemonImpl::TailscaleUp(grpc::ServerContext* ctx, const TSLoginRequest* req, TSStatus* resp) {
+        if (!m_ts) {
+            resp->set_state(TS_STATE_DOWN);
+            resp->set_error("Tailscale not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_ts->Up(req->authkey());
+
+        return grpc::Status::OK;
+    }
+
+    grpc::Status LabDaemonImpl::TailscaleDown(grpc::ServerContext* ctx, const Empty* req, TSStatus* resp) {
+        if (!m_ts) {
+            resp->set_state(TS_STATE_DOWN);
+            resp->set_error("Tailscale not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_ts->Down();
+
+        return grpc::Status::OK;
+    }
+
+    grpc::Status LabDaemonImpl::TailscaleIP(grpc::ServerContext* ctx, const Empty* req, TSStatus* resp) {
+        if (!m_ts) {
+            resp->set_state(TS_STATE_DOWN);
+            resp->set_error("Tailscale not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_ts->GetIP();
 
         return grpc::Status::OK;
     }

@@ -96,6 +96,7 @@ add_executable(labd
     src/labd/dashboard/httpd.cc
     src/labd/ai/engine.cc
     src/labd/remote/wireguard.cc
+    src/labd/remote/tailscale.cc
     src/labd/dns/server.cc
     src/labd/collector/collector.cc
     src/labd/collector/cpu.cc

@@ -46,6 +46,7 @@ namespace chromelab {
         void Stop(void);
         bool IsRunning(void) const;
         void SetWireGuardActive(bool active);
+        void SetTailscaleActive(bool active);
 
     private:
         static MHD_Result RequestHandler(void* cls, struct MHD_Connection* connection, const char* url, const char* method,
@@ -68,6 +69,7 @@ namespace chromelab {
         ServiceManager* m_services;
         struct MHD_Daemon* m_daemon = nullptr;
         bool m_wg_active            = false;
+        bool m_ts_active            = false;
     };
 } // namespace chromelab
 
