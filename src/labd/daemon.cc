@@ -107,6 +107,9 @@ namespace chromelab {
         m_collector->Start();
 
         while (g_running.load()) {
+            if (m_httpd && m_wg) {
+                m_httpd->SetWireGuardActive(m_wg->GetStatus().state() == WG_STATE_UP);
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -173,10 +176,15 @@ namespace chromelab {
         while (std::getline(cpuinfo, line)) {
             if (line.compare(0, 8, "model name") == 0) {
                 auto pos = line.find(':');
-                if (pos != std::string::npos) cpu_model = line.substr(pos + 2);
+                if (pos != std::string::npos) {
+                    cpu_model = line.substr(pos + 2);
+                }
             }
-            if (line.compare(0, 9, "processor") == 0) core_count++;
+            if (line.compare(0, 9, "processor") == 0) {
+                ++core_count;
+            }
         }
+
         resp->set_cpu_model(cpu_model);
         resp->set_cpu_cores(core_count);
         resp->set_arch("x86_64");
@@ -206,30 +214,36 @@ namespace chromelab {
             toml::table tbl = toml::parse(raw);
 
             // Validate daemon section
-            if (auto daemon = tbl["daemon"].as_table()) {
-                if (auto port = daemon->get("http_port")->as_integer()) {
-                    if (*port < 1 || *port > 65535) {
-                        resp->set_valid(false);
-                        resp->add_errors("daemon.http_port must be 1-65535");
+            if (auto* daemon = tbl["daemon"].as_table()) {
+                if (auto* node = daemon->get("http_port")) {
+                    if (auto port = node->as_integer()) {
+                        if (*port < 1 || *port > 65535) {
+                            resp->set_valid(false);
+                            resp->add_errors("daemon.http_port must be 1-65535");
+                        }
                     }
                 }
             }
 
             // Validate wireguard section
-            if (auto wg = tbl["wireguard"].as_table()) {
-                if (auto port = wg->get("listen_port")->as_integer()) {
-                    if (*port < 1 || *port > 65535) {
-                        resp->set_valid(false);
-                        resp->add_errors("wireguard.listen_port must be 1-65535");
+            if (auto* wg = tbl["wireguard"].as_table()) {
+                if (auto* node = wg->get("listen_port")) {
+                    if (auto port = node->as_integer()) {
+                        if (*port < 1 || *port > 65535) {
+                            resp->set_valid(false);
+                            resp->add_errors("wireguard.listen_port must be 1-65535");
+                        }
                     }
                 }
             }
 
             // Validate ai section
-            if (auto ai = tbl["ai"].as_table()) {
-                if (auto ram = ai->get("max_ram")->as_integer()) {
-                    if (*ram < 134217728) { // 128 MB min
-                        resp->add_warnings("ai.max_ram is very low, models may fail to load");
+            if (auto* ai_tbl = tbl["ai"].as_table()) {
+                if (auto* node = ai_tbl->get("max_ram")) {
+                    if (auto ram = node->as_integer()) {
+                        if (*ram < 134217728) { // 128 MB min
+                            resp->add_warnings("ai.max_ram is very low, models may fail to load");
+                        }
                     }
                 }
             }

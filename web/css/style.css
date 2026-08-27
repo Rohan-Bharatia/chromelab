@@ -73,6 +73,13 @@ main {
     margin-bottom: 8px;
 }
 
+.status-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
 .lower {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -148,9 +148,6 @@ function UpdateDetails(snap) {
         tempHtml = '<div class="detail-row"><span class="label">No sensors</span></div>';
     }
     document.getElementById('temp-detail').innerHTML = tempHtml;
-
-    // Status bar
-    document.getElementById('uptime').textContent = 'up ' + FmtUptime(snap.uptime.uptime_seconds);
 }
 
 async function PollEvents() {
@@ -216,12 +213,38 @@ async function Poll() {
     } catch (e) { }
 }
 
+async function PollStatus() {
+    try {
+        const resp = await fetch('/api/status');
+        if (!resp.ok) return;
+        const status = await resp.json();
+        document.getElementById('svc-count').textContent = status.services_running + '/' + status.services_total + ' services';
+        document.getElementById('uptime').textContent = 'up ' + FmtUptime(status.uptime_seconds);
+
+        // WireGuard state from status
+        let wgHtml = '';
+        const wgUp = status.wireguard_active;
+        wgHtml += `<div class="detail-row"><span class="label">State</span><span class="value" style="color:var(--${wgUp ? 'green' : 'red'})">${wgUp ? 'UP' : 'DOWN'}</span></div>`;
+        document.getElementById('wg-detail').innerHTML = wgHtml;
+    } catch (e) { }
+}
+
+async function PollDNS() {
+    let dnsHtml = '<div class="detail-row"><span class="label">Status</span><span class="value" style="color:var(--green)">active</span></div>';
+    dnsHtml += '<div class="detail-row"><span class="label">Cache</span><span class="value">-</span></div>';
+    document.getElementById('dns-detail').innerHTML = dnsHtml;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     CreateCharts();
     Poll();
     PollEvents();
     PollServices();
+    PollStatus();
+    PollDNS();
     setInterval(Poll, POLL_MS);
     setInterval(PollEvents, 5000);
     setInterval(PollServices, 10000);
+    setInterval(PollStatus, 5000);
+    setInterval(PollDNS, 10000);
 });

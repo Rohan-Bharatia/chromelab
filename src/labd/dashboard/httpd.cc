@@ -67,6 +67,11 @@ namespace chromelab {
         return m_daemon != nullptr;
     }
 
+
+    void HttpServer::SetWireGuardActive(bool active) {
+        m_wg_active = active;
+    }
+
     MHD_Result HttpServer::RequestHandler(void* cls, struct MHD_Connection* connection, const char* url, const char* method,
                                           const char* version, const char* upload_data, size_t* upload_data_size, void** con_cls) {
         auto* self = static_cast<HttpServer*>(cls);
@@ -118,6 +123,7 @@ namespace chromelab {
         json            += ",\"uptime_human\":\"" + snap.uptime().uptime_human() + "\"";
         json            += ",\"services_running\":" + std::to_string(running);
         json            += ",\"services_total\":" + std::to_string(services.size());
+        json            += ",\"wireguard_active\":" + std::string(m_wg_active ? "true" : "false");
         json            += "}";
 
         return SendJson(connection, 200, json);
