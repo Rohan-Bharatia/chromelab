@@ -38,9 +38,10 @@
 #include "labd/services/manager.h"
 #include "labd/dashboard/httpd.h"
 #include "labd/ai/engine.h"
+#include "labd/remote/wireguard.h"
+#include "labd/dns/server.h"
 
 namespace chromelab {
-
     class LabDaemonImpl final :
         public LabDaemon::Service {
     public:
@@ -99,6 +100,8 @@ namespace chromelab {
         std::unique_ptr<ServiceManager> m_services;
         std::unique_ptr<HttpServer> m_httpd;
         std::unique_ptr<AiEngine> m_ai;
+        std::unique_ptr<WireGuardManager> m_wg;
+        std::unique_ptr<DnsServer> m_dns;
         EventBus m_bus;
         EventStore m_store;
         std::atomic<bool> m_running{false};

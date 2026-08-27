@@ -164,6 +164,9 @@
     #include <signal.h>
     #include <unistd.h>
     #include <sys/statvfs.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <sys/socket.h>
 #else // (NOT) __linux__
     #error "Chromelab only works on Linux-based operating systems!"
 #endif // __linux__

@@ -24,7 +24,7 @@
 
 #pragma endregion LICENSE
 
-#include "labd/server.h"
+#include "labd/daemon.h"
 
 static std::atomic<bool> g_running{true};
 
@@ -48,6 +48,14 @@ namespace chromelab {
             if (!config.ai_default_model.empty()) {
                 m_ai->Load(config.ai_default_model);
             }
+        }
+
+        if (config.wg_enabled) {
+            m_wg = std::make_unique<WireGuardManager>(config.wg_interface, config.wg_listen_port, config.wg_cidr, config.wg_dns, &m_bus);
+        }
+
+        if (config.dns_enabled) {
+            m_dns = std::make_unique<DnsServer>(config.dns_domain, &m_bus);
         }
     }
 
@@ -75,6 +83,15 @@ namespace chromelab {
             std::cerr << "warning: HTTP server failed to start on port " << m_config.http_port << "\n";
         }
 
+        // Start DNS server
+        if (m_dns) {
+            if (m_dns->Start()) {
+                std::cout << "DNS server started\n";
+            } else {
+                std::cerr << "warning: DNS server failed to start\n";
+            }
+        }
+
         // Emit startup event
         {
             Event startup;
@@ -97,12 +114,14 @@ namespace chromelab {
     }
 
     void LabDaemonImpl::Stop(void) {
-        // Stop HTTP server
         if (m_httpd) {
             m_httpd->Stop();
         }
 
-        // Stop telemetry collection first
+        if (m_dns) {
+            m_dns->Stop();
+        }
+
         if (m_collector) {
             m_collector->Stop();
         }
@@ -119,7 +138,6 @@ namespace chromelab {
     grpc::Status LabDaemonImpl::GetStatus(grpc::ServerContext* ctx, const Empty* req, StatusResponse* resp) {
         auto snap = m_collector->GetSnapshot();
 
-        // Count running services
         auto services = m_services->ListServices();
         int running   = 0;
         for (const auto& svc : services) {
@@ -130,7 +148,7 @@ namespace chromelab {
         resp->set_hostname("chromelab");
         resp->set_uptime_seconds(snap.uptime().uptime_seconds());
         resp->set_ai_loaded(m_ai && m_ai->GetStatus().status() == MODEL_STATUS_READY);
-        resp->set_wireguard_active(false);
+        resp->set_wireguard_active(m_wg && m_wg->GetStatus().state() == WG_STATE_UP);
         resp->set_services_running(running);
         resp->set_services_total(static_cast<int32_t>(services.size()));
 
@@ -148,7 +166,6 @@ namespace chromelab {
         resp->set_hostname("chromelab");
         resp->set_kernel_version(read_first_line("/proc/version"));
 
-        // Read CPU info
         std::ifstream cpuinfo("/proc/cpuinfo");
         int core_count = 0;
         std::string cpu_model;
@@ -164,12 +181,9 @@ namespace chromelab {
         resp->set_cpu_cores(core_count);
         resp->set_arch("x86_64");
 
-        // Read memory from latest snapshot
         auto snap = m_collector->GetSnapshot();
         resp->set_total_ram_bytes(snap.memory().total_bytes());
-        resp->set_total_disk_bytes(0);
 
-        // Disk total from filesystems
         int64_t total_disk = 0;
         for (const auto& fs : snap.disk().filesystems()) {
             total_disk += fs.total_bytes();
@@ -182,14 +196,85 @@ namespace chromelab {
     grpc::Status LabDaemonImpl::ValidateConfig(grpc::ServerContext* ctx, const Config* req, ValidateResponse* resp) {
         resp->set_valid(true);
 
+        std::string raw = req->raw_toml();
+        if (raw.empty()) {
+            return grpc::Status::OK;
+        }
+
+        // Parse the provided TOML and check for basic errors
+        try {
+            toml::table tbl = toml::parse(raw);
+
+            // Validate daemon section
+            if (auto daemon = tbl["daemon"].as_table()) {
+                if (auto port = daemon->get("http_port")->as_integer()) {
+                    if (*port < 1 || *port > 65535) {
+                        resp->set_valid(false);
+                        resp->add_errors("daemon.http_port must be 1-65535");
+                    }
+                }
+            }
+
+            // Validate wireguard section
+            if (auto wg = tbl["wireguard"].as_table()) {
+                if (auto port = wg->get("listen_port")->as_integer()) {
+                    if (*port < 1 || *port > 65535) {
+                        resp->set_valid(false);
+                        resp->add_errors("wireguard.listen_port must be 1-65535");
+                    }
+                }
+            }
+
+            // Validate ai section
+            if (auto ai = tbl["ai"].as_table()) {
+                if (auto ram = ai->get("max_ram")->as_integer()) {
+                    if (*ram < 134217728) { // 128 MB min
+                        resp->add_warnings("ai.max_ram is very low, models may fail to load");
+                    }
+                }
+            }
+
+        } catch (const toml::parse_error& e) {
+            resp->set_valid(false);
+            resp->add_errors(std::string("TOML parse error: ") + e.what());
+        }
+
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::Reboot(grpc::ServerContext* ctx, const RebootRequest* req, Empty* resp) {
-        return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "not yet");
+        Event ev;
+        ev.set_category(EVENT_CATEGORY_SYSTEM);
+        ev.set_severity(SEVERITY_WARNING);
+        ev.set_source("labd");
+        ev.set_message("System reboot requested: " + req->reason());
+        m_store.Append(&ev);
+        m_bus.Emit(ev);
+
+        int delay = req->delay_seconds();
+        if (delay <= 0) {
+            delay = 1;
+        }
+
+        // Schedule reboot in background thread
+        std::thread([delay]() {
+            std::this_thread::sleep_for(std::chrono::seconds(delay));
+            int ret = system("reboot");
+            (void)ret;
+        }).detach();
+
+        return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::Shutdown(grpc::ServerContext* ctx, const Empty* req, Empty* resp) {
+        Event ev;
+        ev.set_category(EVENT_CATEGORY_SYSTEM);
+        ev.set_severity(SEVERITY_WARNING);
+        ev.set_source("labd");
+        ev.set_message("Daemon shutdown requested via RPC");
+        m_store.Append(&ev);
+        m_bus.Emit(ev);
+
         g_running.store(false);
 
         return grpc::Status::OK;
@@ -225,13 +310,11 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::StreamEvents(grpc::ServerContext* ctx, const StreamRequest* req, grpc::ServerWriter<Event>* writer) {
-        // Subscribe to all events and forward them to the gRPC writer
         auto sub = m_bus.Subscribe(EVENT_CATEGORY_UNSPECIFIED, [&](const Event& event) {
             Event copy = event;
             writer->Write(copy);
         });
 
-        // Block until client disconnects
         while (g_running.load() && !ctx->IsCancelled()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
@@ -428,37 +511,79 @@ namespace chromelab {
     }
 
     grpc::Status LabDaemonImpl::GetWireGuardStatus(grpc::ServerContext* ctx, const WGRequest* req, WGStatus* resp) {
-        resp->set_state(WGState::WG_STATE_DOWN);
+        if (!m_wg) {
+            resp->set_state(WG_STATE_DOWN);
+            resp->set_error("WireGuard not enabled in config");
+            return grpc::Status::OK;
+        }
+
+        *resp = m_wg->GetStatus();
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::WireGuardUp(grpc::ServerContext* ctx, const WGRequest* req, WGStatus* resp) {
-        resp->set_state(WGState::WG_STATE_DOWN);
-        resp->set_error("WireGuard module not yet implemented");
+        if (!m_wg) {
+            resp->set_state(WG_STATE_DOWN);
+            resp->set_error("WireGuard not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_wg->Up();
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::WireGuardDown(grpc::ServerContext* ctx, const Empty* req, WGStatus* resp) {
-        resp->set_state(WGState::WG_STATE_DOWN);
+        if (!m_wg) {
+            resp->set_state(WG_STATE_DOWN);
+            resp->set_error("WireGuard not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_wg->Down();
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::AddPeer(grpc::ServerContext* ctx, const AddPeerRequest* req, WGStatus* resp) {
-        resp->set_error("WireGuard module not yet implemented");
+        if (!m_wg) {
+            resp->set_state(WG_STATE_DOWN);
+            resp->set_error("WireGuard not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_wg->AddPeer(req->name(), req->public_key(), req->allowed_ips(), req->endpoint());
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::RemovePeer(grpc::ServerContext* ctx, const RemovePeerRequest* req, WGStatus* resp) {
-        resp->set_error("WireGuard module not yet implemented");
+        if (!m_wg) {
+            resp->set_state(WG_STATE_DOWN);
+            resp->set_error("WireGuard not enabled in config");
+
+            return grpc::Status::OK;
+        }
+
+        *resp = m_wg->RemovePeer(req->public_key());
 
         return grpc::Status::OK;
     }
 
     grpc::Status LabDaemonImpl::ListPeers(grpc::ServerContext* ctx, const Empty* req, PeersList* resp) {
+        if (!m_wg) {
+            return grpc::Status::OK;
+        }
+
+        auto peers = m_wg->ListPeers();
+        for (auto& p : peers) {
+            *resp->add_peers() = std::move(p);
+        }
+
         return grpc::Status::OK;
     }
 } // namespace chromelab

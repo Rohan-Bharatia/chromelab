@@ -25,6 +25,7 @@
 #pragma endregion LICENSE
 
 #include "labctl/tui.h"
+#include "labd/remote/wireguard.h"
 
 static void usage(const char* prog) {
     std::cerr << "Usage: " << prog << " <command> [options]\n\n"
@@ -51,8 +52,11 @@ static void usage(const char* prog) {
               << "  wg status           WireGuard status\n"
               << "  wg up               Bring WireGuard up\n"
               << "  wg down             Bring WireGuard down\n"
+              << "  wg peers            List WireGuard peers\n"
+              << "  wg add-peer         Add a peer (interactive)\n"
+              << "  wg remove-peer <pk> Remove a peer by public key\n"
+              << "  wg genkey           Generate a WireGuard keypair\n"
               << "  config validate     Validate configuration\n"
-              << "  system info         Show system info\n"
               << "  tui                 Live terminal dashboard\n"
               << "\nOptions:\n"
               << "  -s, --socket PATH   Daemon socket (default: /run/chromelab/labd.sock)\n"
@@ -109,7 +113,6 @@ static int cmd_info(const std::shared_ptr<grpc::Channel>& channel) {
 }
 
 static void print_snapshot(const chromelab::MetricSnapshot& snap) {
-    // CPU
     const auto& cpu = snap.cpu();
     std::cout << "CPU:       " << cpu.overall_percent() << "% (" << cpu.cores_size() << " cores)\n";
     for (int i = 0; i < cpu.cores_size(); ++i) {
@@ -117,7 +120,6 @@ static void print_snapshot(const chromelab::MetricSnapshot& snap) {
         std::cout << "  core " << c.core_id() << ":  " << c.percent() << "%\n";
     }
 
-    // Memory
     const auto& mem = snap.memory();
     if (mem.total_bytes() > 0) {
         std::cout << "Memory:    " << mem.used_bytes() / (1024 * 1024) << " / "
@@ -128,11 +130,9 @@ static void print_snapshot(const chromelab::MetricSnapshot& snap) {
         }
     }
 
-    // Load
     const auto& load = snap.load();
     std::cout << "Load:      " << load.load_1m() << " " << load.load_5m() << " " << load.load_15m() << "\n";
 
-    // Disk
     const auto& disk = snap.disk();
     for (int i = 0; i < disk.filesystems_size(); ++i) {
         const auto& fs = disk.filesystems(i);
@@ -141,7 +141,6 @@ static void print_snapshot(const chromelab::MetricSnapshot& snap) {
                   << fs.total_bytes() / (1024 * 1024 * 1024) << " GB (" << fs.percent() << "%)\n";
     }
 
-    // Network
     const auto& net = snap.network();
     for (int i = 0; i < net.interfaces_size(); ++i) {
         const auto& iface = net.interfaces(i);
@@ -153,21 +152,18 @@ static void print_snapshot(const chromelab::MetricSnapshot& snap) {
     std::cout << "Connections: TCP=" << net.tcp_established() << " est, "
               << net.tcp_time_wait() << " tw | UDP=" << net.udp_connections() << "\n";
 
-    // Temperature
     const auto& temp = snap.temperature();
     for (int i = 0; i < temp.zones_size(); ++i) {
         const auto& z = temp.zones(i);
         std::cout << "Temp " << z.name() << ":    " << z.temp_celsius() << " C (" << z.type() << ")\n";
     }
 
-    // Processes
     const auto& procs = snap.processes();
     std::cout << "Procs:     " << procs.total() << " total, "
               << procs.running() << " run, "
               << procs.sleeping() << " sleep, "
               << procs.zombie() << " zombie\n";
 
-    // Uptime
     const auto& up = snap.uptime();
     std::cout << "Uptime:    " << up.uptime_human() << "\n";
 }
@@ -183,7 +179,6 @@ static int cmd_metrics(const std::shared_ptr<grpc::Channel>& channel, bool watch
 
         chromelab::MetricSnapshot snap;
         while (reader->Read(&snap)) {
-            // Clear screen
             std::cout << "\033[2J\033[H";
             std::cout << "=== chromelab metrics (live) ===\n\n";
             print_snapshot(snap);
@@ -351,14 +346,12 @@ static int cmd_svc(const std::shared_ptr<grpc::Channel>& channel, const std::vec
         for (const auto& svc : resp.services()) {
             std::cout << svc.name();
 
-            // Pad to 29 chars
             for (int p = svc.name().size(); p < 29; ++p) {
                 std::cout << ' ';
             }
 
             std::cout << svc_state_str(svc.state());
 
-            // Pad state to 11 chars
             std::string s = svc_state_str(svc.state());
             for (int p = s.size(); p < 11; ++p) {
                 std::cout << ' ';
@@ -547,7 +540,6 @@ static int cmd_ai(const std::shared_ptr<grpc::Channel>& channel, const std::vect
     }
 
     if (action == "chat") {
-        // Collect remaining args as the prompt
         std::string prompt;
         for (int i = start + 1; i < static_cast<int>(args.size()); i++) {
             if (i > start + 1) {
@@ -583,6 +575,264 @@ static int cmd_ai(const std::shared_ptr<grpc::Channel>& channel, const std::vect
     }
 
     std::cerr << "Unknown AI action: " << action << "\n";
+    return 1;
+}
+
+static const char* wg_state_str(chromelab::WGState s) {
+    switch (s) {
+        case chromelab::WG_STATE_UP:
+            return "up";
+        case chromelab::WG_STATE_DOWN:
+            return "down";
+        default:
+            return "unknown";
+    }
+}
+
+static int cmd_wg(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
+    if (start >= static_cast<int>(args.size())) {
+        std::cerr << "Usage: labctl wg <status|up|down|peers|add-peer|remove-peer|genkey> [args]\n";
+        return 1;
+    }
+
+    auto stub          = chromelab::LabDaemon::NewStub(channel);
+    const auto& action = args[start];
+
+    if (action == "status") {
+        grpc::ClientContext ctx;
+        chromelab::WGRequest req;
+        chromelab::WGStatus resp;
+        auto s = stub->GetWireGuardStatus(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        std::cout << "WireGuard: " << wg_state_str(resp.state()) << "\n"
+                  << "  Interface: " << resp.interface_name() << "\n"
+                  << "  Listen:    " << resp.listen_port() << "\n"
+                  << "  DNS:       " << resp.dns() << "\n"
+                  << "  Key:       " << (resp.public_key().empty() ? "(none)" : resp.public_key().substr(0, 16) + "...") << "\n"
+                  << "  Peers:     " << resp.peers_size() << "\n";
+
+        if (!resp.error().empty()) {
+            std::cerr << "  Error: " << resp.error() << "\n";
+        }
+
+        return 0;
+    }
+
+    if (action == "up") {
+        grpc::ClientContext ctx;
+        chromelab::WGRequest req;
+        chromelab::WGStatus resp;
+        auto s = stub->WireGuardUp(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (!resp.error().empty()) {
+            std::cerr << "Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        std::cout << "WireGuard up: " << resp.interface_name() << "\n";
+        return 0;
+    }
+
+    if (action == "down") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::WGStatus resp;
+        auto s = stub->WireGuardDown(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (!resp.error().empty()) {
+            std::cerr << "Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        std::cout << "WireGuard down\n";
+        return 0;
+    }
+
+    if (action == "peers") {
+        grpc::ClientContext ctx;
+        chromelab::Empty req;
+        chromelab::PeersList resp;
+        auto s = stub->ListPeers(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (resp.peers_size() == 0) {
+            std::cout << "No peers.\n";
+            return 0;
+        }
+
+        std::cout << "PUBLIC KEY          ENDPOINT          ALLOWED IPS\n";
+        std::cout << "──────────────────────────────────────────────────────────\n";
+        for (const auto& p : resp.peers()) {
+            std::string pk_short = p.public_key().substr(0, 16);
+            std::cout << pk_short;
+            for (int i = pk_short.size(); i < 20; ++i) {
+                std::cout << ' ';
+            }
+
+            std::string ep = p.endpoint().empty() ? "-" : p.endpoint();
+            std::cout << ep;
+            for (int i = ep.size(); i < 18; ++i) {
+                std::cout << ' ';
+            }
+
+            std::cout << (p.allowed_ips().empty() ? "-" : p.allowed_ips()) << "\n";
+
+            if (p.latest_handshake_ms() > 0) {
+                auto hs = std::chrono::milliseconds(p.latest_handshake_ms());
+                auto tp = std::chrono::system_clock::time_point(hs);
+                auto tt = std::chrono::system_clock::to_time_t(tp);
+                char buf[20];
+                std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", std::localtime(&tt));
+                std::cout << "  last handshake: " << buf
+                          << "  rx=" << p.transfer_rx_bytes() / 1024 << "KB"
+                          << "  tx=" << p.transfer_tx_bytes() / 1024 << "KB\n";
+            }
+        }
+
+        return 0;
+    }
+
+    if (action == "add-peer") {
+        if (start + 3 >= static_cast<int>(args.size())) {
+            std::cerr << "Usage: labctl wg add-peer <name> <public_key> <allowed_ips> [endpoint]\n";
+            return 1;
+        }
+
+        grpc::ClientContext ctx;
+        chromelab::AddPeerRequest req;
+        req.set_name(args[start + 1]);
+        req.set_public_key(args[start + 2]);
+        req.set_allowed_ips(args[start + 3]);
+        if (start + 4 < static_cast<int>(args.size())) {
+            req.set_endpoint(args[start + 4]);
+        }
+
+        chromelab::WGStatus resp;
+        auto s = stub->AddPeer(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (!resp.error().empty()) {
+            std::cerr << "Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        std::cout << "Peer added: " << req.name() << "\n";
+        return 0;
+    }
+
+    if (action == "remove-peer") {
+        if (start + 1 >= static_cast<int>(args.size())) {
+            std::cerr << "Public key required\n";
+            return 1;
+        }
+
+        grpc::ClientContext ctx;
+        chromelab::RemovePeerRequest req;
+        req.set_public_key(args[start + 1]);
+
+        chromelab::WGStatus resp;
+        auto s = stub->RemovePeer(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (!resp.error().empty()) {
+            std::cerr << "Error: " << resp.error() << "\n";
+            return 1;
+        }
+
+        std::cout << "Peer removed.\n";
+        return 0;
+    }
+
+    if (action == "genkey") {
+        auto [privkey, pubkey] = chromelab::WireGuardManager::GenerateKeypair();
+        if (privkey.empty()) {
+            std::cerr << "Failed to generate keypair (is wg installed?)\n";
+            return 1;
+        }
+
+        std::cout << "Private key: " << privkey << "\n"
+                  << "Public key:  " << pubkey << "\n"
+                  << "\nKeep the private key secret. Add the public key to your peer config.\n";
+        return 0;
+    }
+
+    std::cerr << "Unknown WireGuard action: " << action << "\n";
+    return 1;
+}
+
+static int cmd_config(const std::shared_ptr<grpc::Channel>& channel, const std::vector<std::string>& args, int start) {
+    if (start >= static_cast<int>(args.size())) {
+        std::cerr << "Usage: labctl config <validate> [file]\n";
+        return 1;
+    }
+
+    auto stub          = chromelab::LabDaemon::NewStub(channel);
+    const auto& action = args[start];
+
+    if (action == "validate") {
+        std::string toml_str;
+
+        // If a file path is provided, read it
+        if (start + 1 < static_cast<int>(args.size())) {
+            std::ifstream f(args[start + 1]);
+            if (!f.is_open()) {
+                std::cerr << "Cannot open: " << args[start + 1] << "\n";
+                return 1;
+            }
+
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            toml_str = ss.str();
+        }
+
+        grpc::ClientContext ctx;
+        chromelab::Config req;
+        req.set_raw_toml(toml_str);
+        chromelab::ValidateResponse resp;
+        auto s = stub->ValidateConfig(&ctx, req, &resp);
+        if (!s.ok()) {
+            std::cerr << "Error: " << s.error_message() << "\n";
+            return 1;
+        }
+
+        if (resp.valid()) {
+            std::cout << "Config: valid\n";
+        } else {
+            std::cout << "Config: INVALID\n";
+        }
+
+        for (const auto& e : resp.errors()) {
+            std::cerr << "  error:   " << e << "\n";
+        }
+        for (const auto& w : resp.warnings()) {
+            std::cout << "  warning: " << w << "\n";
+        }
+
+        return resp.valid() ? 0 : 1;
+    }
+
+    std::cerr << "Unknown config action: " << action << "\n";
     return 1;
 }
 
@@ -622,13 +872,11 @@ int main(int argc, char* argv[]) {
     } if (cmd == "svc") {
         return cmd_svc(channel, args, 1);
     } if (cmd == "wg") {
-        std::cout << "WireGuard commands not yet implemented\n";
-        return 1;
+        return cmd_wg(channel, args, 1);
     } if (cmd == "ai") {
         return cmd_ai(channel, args, 1);
     } if (cmd == "config") {
-        std::cout << "Config commands not yet implemented\n";
-        return 1;
+        return cmd_config(channel, args, 1);
     } if (cmd == "tui") {
         chromelab::Tui tui(socket_path);
         return tui.Run();

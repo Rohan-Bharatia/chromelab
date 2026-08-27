@@ -24,7 +24,7 @@
 
 #pragma endregion LICENSE
 
-#include "labd/server.h"
+#include "labd/daemon.h"
 
 static constexpr const char* LABD_VERSION = "0.1.0";
 

@@ -87,13 +87,15 @@ target_link_libraries(chromelab_proto PUBLIC
 # labd (daemon)
 add_executable(labd
     src/labd/main.cc
-    src/labd/server.cc
+    src/labd/daemon.cc
     src/labd/config.cc
     src/labd/events/bus.cc
     src/labd/events/store.cc
     src/labd/services/manager.cc
     src/labd/dashboard/httpd.cc
     src/labd/ai/engine.cc
+    src/labd/remote/wireguard.cc
+    src/labd/dns/server.cc
     src/labd/collector/collector.cc
     src/labd/collector/cpu.cc
     src/labd/collector/memory.cc
@@ -121,6 +123,8 @@ target_precompile_headers(labd PRIVATE src/pch.h)
 add_executable(labctl
     src/labctl/main.cc
     src/labctl/tui.cc
+    src/labd/remote/wireguard.cc
+    src/labd/events/bus.cc
 )
 target_include_directories(labctl PRIVATE src)
 target_link_libraries(labctl PRIVATE
