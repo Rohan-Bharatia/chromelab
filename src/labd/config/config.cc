@@ -24,7 +24,7 @@
 
 #pragma endregion LICENSE
 
-#include "labd/config.h"
+#include "labd/config/config.h"
 
 namespace chromelab {
     template<typename T>

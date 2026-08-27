@@ -31,7 +31,7 @@
 
 #include "pch.h"
 
-#include "labd/config.h"
+#include "labd/config/config.h"
 #include "labd/collector/collector.h"
 #include "labd/events/bus.h"
 #include "labd/events/store.h"

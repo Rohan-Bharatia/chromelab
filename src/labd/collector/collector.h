@@ -29,7 +29,7 @@
 #ifndef _LABD_COLLECTOR_H_
     #define _LABD_COLLECTOR_H_ (1)
 
-#include "labd/config.h"
+#include "labd/config/config.h"
 
 namespace chromelab {
     class EventBus;

@@ -20,17 +20,13 @@ RUN_DIR="/run/chromelab"
 WEB_DIR="${PREFIX}/share/chromelab/web"
 BIN_DIR="${PREFIX}/bin"
 
-APK_REPOS_FILE="/etc/apk/repositories"
-DOAS_CONF_FILE="/etc/doas.conf"
-XINITRC_FILE="${HOME_DIR}/.xinitrc"
-
 REPO_URL="https://github.com/Rohan-Bharatia/chromelab.git"
 
 echo "Installing base..."
 apk update
 
-if grep -q '^#.*\/community$' "${APK_REPOS_FILE}"; then
-    sed -i 's|^#\(.*\/community\)$|\1|' "${APK_REPOS_FILE}"
+if grep -q '^#.*\/community$' /etc/apk/repositories; then
+    sed -i 's|^#\(.*\/community\)$|\1|' /etc/apk/repositories
 fi
 apk update
 
@@ -46,18 +42,18 @@ install -d -o lab -g lab -m 0755 "${HOME_DIR}"
 
 apk add doas fastfetch
 
-cat "${DOAS_CONF_FILE}" <<"EOF"
+cat /etc/doas.conf <<"EOF"
 permit persist :wheel
 EOF
-chmod 0400 "${DOAS_CONF_FILE}"
-chown root:root "${DOAS_CONF_FILE}"
+chmod 0400 /etc/doas.conf
+chown root:root /etc/doas.conf
 
-cat >"${XINITRC_FILE}" <<'EOF'
+cat >"${HOME_DIR}/.xinitrc" <<'EOF'
 xset r rate 200 35 &
 xrandr -s 1920x1080
 EOF
-chmod 0644 "${XINITRC_FILE}"
-chown lab:lab "${XINITRC_FILE}"
+chmod 0644 "${HOME_DIR}/.xinitrc"
+chown lab:lab "${HOME_DIR}/.xinitrc"
 
 echo "Installing dependencies..."
 apk add build-base \
@@ -76,6 +72,15 @@ apk add build-base \
 ARCH=$(uname -m)
 echo "Architecture: ${ARCH}"
 
+if [ -d "${REPO_DIR}/.git" ]; then
+    echo "Updating repository..."
+    git -C "${REPO_DIR}" pull --ff-only --recurse-submodules
+else
+    echo "Cloning repository..."
+    git clone "${REPO_URL}" "${REPO_DIR}" --recurse-submodules
+fi
+chown -R lab:lab "${REPO_DIR}"
+
 echo "Creating directories..."
 install -d -o root -g root -m 0755 "${BIN_DIR}"
 install -d -o root -g root -m 0755 "${CONF_DIR}"
@@ -85,13 +90,6 @@ install -d -o root -g root -m 0755 "${LOG_DIR}"
 install -d -o root -g root -m 0755 "${RUN_DIR}"
 install -d -o root -g root -m 0755 "${WEB_DIR}"
 install -d -o lab -g lab -m 0755 "${BUILD_DIR}"
-
-echo "Cloning repository..."
-echo "Cloning repository..."
-rm -rf "${REPO_URL}"
-git clone "${REPO_URL}" "${REPO_DIR}"
-chown -R lab:lab "${REPO_DIR}"
-git -C "${REPO_DIR}" submodule update --init --recursive
 
 echo "Building..."
 cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE="Release"
