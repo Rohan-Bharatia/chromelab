@@ -64,7 +64,6 @@ static void usage(const char* prog) {
               << "  tui                 Live terminal dashboard\n"
               << "\nOptions:\n"
               << "  -s, --socket PATH   Daemon socket (default: /run/chromelab/labd.sock)\n"
-              << "  -j, --json          Output as JSON\n"
               << "  -h, --help          Show this help\n";
 }
 
@@ -992,7 +991,7 @@ int main(int argc, char* argv[]) {
         return cmd_status(channel);
     } if (cmd == "info" || cmd == "system") {
         return cmd_info(channel);
-    }     if (cmd == "metrics") {
+    } if (cmd == "metrics") {
         bool watch = (args.size() > 1 && args[1] == "--watch");
         return cmd_metrics(channel, watch);
     } if (cmd == "events") {

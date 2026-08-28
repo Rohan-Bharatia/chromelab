@@ -167,6 +167,7 @@
     #include <arpa/inet.h>
     #include <netdb.h>
     #include <sys/socket.h>
+    #include <sys/utsname.h>
 #else // (NOT) __linux__
     #error "Chromelab only works on Linux-based operating systems!"
 #endif // __linux__

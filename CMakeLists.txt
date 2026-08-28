@@ -89,7 +89,7 @@ target_link_libraries(chromelab_proto PUBLIC
 add_executable(labd
     src/labd/main.cc
     src/labd/daemon.cc
-    src/labd/config.cc
+    src/labd/config/config.cc
     src/labd/events/bus.cc
     src/labd/events/store.cc
     src/labd/services/manager.cc

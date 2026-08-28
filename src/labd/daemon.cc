@@ -26,12 +26,6 @@
 
 #include "labd/daemon.h"
 
-static std::atomic<bool> g_running{true};
-
-static void signal_handler(int sig) {
-    g_running.store(false);
-}
-
 namespace chromelab {
     LabDaemonImpl::LabDaemonImpl(const LabdConfig& config) :
         m_config(config),
@@ -110,7 +104,7 @@ namespace chromelab {
         // Start telemetry collection
         m_collector->Start();
 
-        while (g_running.load()) {
+        while (m_running.load()) {
             if (m_httpd && m_wg) {
                 m_httpd->SetWireGuardActive(m_wg->GetStatus().state() == WG_STATE_UP);
             }
@@ -155,7 +149,7 @@ namespace chromelab {
         }
 
         resp->set_version("0.1.0");
-        resp->set_hostname("chromelab");
+        resp->set_hostname(read_first_line("/proc/sys/kernel/hostname"));
         resp->set_uptime_seconds(snap.uptime().uptime_seconds());
         resp->set_ai_loaded(m_ai && m_ai->GetStatus().status() == MODEL_STATUS_READY);
         resp->set_wireguard_active(m_wg && m_wg->GetStatus().state() == WG_STATE_UP);
@@ -173,9 +167,35 @@ namespace chromelab {
         return line;
     }
 
+    static bool is_shell_safe(const std::string& value, const std::string& allowed) {
+        for (char c : value) {
+            if (allowed.find(c) == std::string::npos) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static grpc::Status invalid_field(const std::string& field) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "invalid characters in " + field + " (remote control fields must not contain shell metacharacters)");
+    }
+
     grpc::Status LabDaemonImpl::GetSystemInfo(grpc::ServerContext* ctx, const Empty* req, SystemInfo* resp) {
-        resp->set_hostname("chromelab");
         resp->set_kernel_version(read_first_line("/proc/version"));
+        resp->set_alpine_version(read_first_line("/etc/alpine-release"));
+
+        std::string hostname = read_first_line("/proc/sys/kernel/hostname");
+        std::string arch     = "unknown";
+        struct utsname uts;
+        if (uname(&uts) == 0) {
+            if (hostname.empty()) {
+                hostname = uts.nodename;
+            }
+            arch = uts.machine;
+        }
+        resp->set_hostname(hostname);
+        resp->set_arch(arch);
 
         std::ifstream cpuinfo("/proc/cpuinfo");
         int core_count = 0;
@@ -195,7 +215,6 @@ namespace chromelab {
 
         resp->set_cpu_model(cpu_model);
         resp->set_cpu_cores(core_count);
-        resp->set_arch("x86_64");
 
         auto snap = m_collector->GetSnapshot();
         resp->set_total_ram_bytes(snap.memory().total_bytes());
@@ -297,7 +316,7 @@ namespace chromelab {
         m_store.Append(&ev);
         m_bus.Emit(ev);
 
-        g_running.store(false);
+        m_running.store(false);
 
         return grpc::Status::OK;
     }
@@ -310,7 +329,7 @@ namespace chromelab {
     grpc::Status LabDaemonImpl::StreamMetrics(grpc::ServerContext* ctx, const StreamRequest* req, grpc::ServerWriter<MetricSnapshot>* writer) {
         int interval = req->interval_ms() > 0 ? req->interval_ms() : m_config.metrics_interval_ms;
 
-        while (g_running.load()) {
+        while (m_running.load()) {
             MetricSnapshot snap = m_collector->GetSnapshot();
             if (!writer->Write(snap)) {
                 break;
@@ -337,7 +356,7 @@ namespace chromelab {
             writer->Write(copy);
         });
 
-        while (g_running.load() && !ctx->IsCancelled()) {
+        while (m_running.load() && !ctx->IsCancelled()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
@@ -578,6 +597,15 @@ namespace chromelab {
             return grpc::Status::OK;
         }
 
+        // public_key is base64 (alnum + '+' '/' '='); endpoint is host:port; allowed_ips are comma-separated CIDRs
+        const std::string safe_net = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.:/[],-_";
+        if (req->public_key().empty() ||
+            !is_shell_safe(req->public_key(), safe_net + "+=") ||
+            !is_shell_safe(req->allowed_ips(), safe_net) ||
+            !is_shell_safe(req->endpoint(), safe_net)) {
+            return invalid_field("peer");
+        }
+
         *resp = m_wg->AddPeer(req->name(), req->public_key(), req->allowed_ips(), req->endpoint());
 
         return grpc::Status::OK;
@@ -589,6 +617,10 @@ namespace chromelab {
             resp->set_error("WireGuard not enabled in config");
 
             return grpc::Status::OK;
+        }
+
+        if (req->public_key().empty() || !is_shell_safe(req->public_key(), "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")) {
+            return invalid_field("public key");
         }
 
         *resp = m_wg->RemovePeer(req->public_key());
@@ -628,6 +660,11 @@ namespace chromelab {
             resp->set_error("Tailscale not enabled in config");
 
             return grpc::Status::OK;
+        }
+
+        if (!req->authkey().empty() &&
+            !is_shell_safe(req->authkey(), "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_:.")) {
+            return invalid_field("authkey");
         }
 
         *resp = m_ts->Up(req->authkey());

@@ -185,22 +185,28 @@ int main(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        auto skip_next = [&]() { ++i; };
 
-        if (arg == "-c" || arg == "--config" || arg == "-h" || arg == "--help" || arg == "-v" || arg == "--version" || arg == "-d" || arg == "--daemon" || arg == "--no-daemon") {
-            if (arg != "-c" && arg != "--config") {
-                skip_next();
+        // Re-apply CLI overrides after the config file is loaded
+        if (arg == "-c" || arg == "--config") {
+            if (i + 1 < argc) {
+                config_path = argv[++i];
             }
-
-            continue;
-        } if (arg == "-s" || arg == "--socket") {
-            config.socket_path = argv[++i];
+        } else if (arg == "-s" || arg == "--socket") {
+            if (i + 1 < argc) {
+                config.socket_path = argv[++i];
+            }
         } else if (arg == "-p" || arg == "--port") {
-            config.http_port = static_cast<uint16_t>(std::stoi(argv[++i]));
+            if (i + 1 < argc) {
+                config.http_port = static_cast<uint16_t>(std::stoi(argv[++i]));
+            }
         } else if (arg == "-i" || arg == "--interval") {
-            config.metrics_interval_ms = std::stoi(argv[++i]);
+            if (i + 1 < argc) {
+                config.metrics_interval_ms = std::stoi(argv[++i]);
+            }
         } else if (arg == "-l" || arg == "--log-level") {
-            config.log_level = argv[++i];
+            if (i + 1 < argc) {
+                config.log_level = argv[++i];
+            }
         }
     }
 

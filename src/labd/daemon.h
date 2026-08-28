@@ -26,10 +26,8 @@
 
 #pragma once
 
-#ifndef _LABD_SERVER_H_
-    #define _LABD_SERVER_H_ (1)
-
-#include "pch.h"
+#ifndef _LABD_DAEMON_H_
+    #define _LABD_DAEMON_H_ (1)
 
 #include "labd/config/config.h"
 #include "labd/collector/collector.h"
@@ -116,4 +114,4 @@ namespace chromelab {
     };
 } // namespace chromelab
 
-#endif // _LABD_SERVER_H_
+#endif // _LABD_DAEMON_H_

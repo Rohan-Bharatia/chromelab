@@ -109,6 +109,9 @@ fi
 echo "Installing web dashboard..."
 cp -r "${REPO_DIR}/web/." "${WEB_DIR}/"
 
+echo "Installing models..."
+cp -r "${REPO_DIR}/models/." "${DATA_DIR}/models/"
+
 echo "Installing init script..."
 install -m 0755 "${REPO_DIR}/etc/init.d/labd" /etc/init.d/labd
 

@@ -106,11 +106,11 @@ namespace chromelab {
 
         {
             std::lock_guard lock(m_mutex);
-            m_latest = std::move(snap);
+            m_latest = snap;
         }
 
         if (m_bus != nullptr) {
-            CheckThresholds(m_latest);
+            CheckThresholds(snap);
         }
     }
 
